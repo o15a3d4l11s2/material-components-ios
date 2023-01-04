@@ -735,7 +735,8 @@ Pod::Spec.new do |mdc|
     component.public_header_files = "components/#{component.base_name}/src/*.h"
     component.source_files = [
       "components/#{component.base_name}/src/*.{h,m}",
-      "components/#{component.base_name}/src/private/*.{h,m}"
+      "components/#{component.base_name}/src/private/*.{h,m}",
+      "components/Color/src/*.{h,m}",
     ]
     component.dependency "MaterialComponents/Availability"
     component.dependency "MaterialComponents/private/Color"
