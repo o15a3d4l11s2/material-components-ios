@@ -120,7 +120,8 @@ Pod::Spec.new do |mdc|
     component.public_header_files = "components/#{component.base_name}/src/*.h"
     component.source_files = [
       "components/#{component.base_name}/src/*.{h,m}",
-      "components/#{component.base_name}/src/private/*.{h,m}"
+      "components/#{component.base_name}/src/private/*.{h,m}",
+      "components/MinimumOS/src/*.{h,m}",
     ]
 
     component.test_spec 'UnitTests' do |unit_tests|
