@@ -218,7 +218,10 @@ Pod::Spec.new do |mdc|
 
   mdc.subspec "Banner" do |component|
     component.public_header_files = "components/#{component.base_name}/src/*.h"
-    component.source_files = "components/#{component.base_name}/src/*.{h,m}"
+    component.source_files = [
+      "components/#{component.base_name}/src/*.{h,m}",
+      "components/M3CButton/src/*.{h,m}"
+    ]
 
     component.dependency "MaterialComponents/Availability"
     component.dependency "MaterialComponents/Buttons"
