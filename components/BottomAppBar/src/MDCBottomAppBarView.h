@@ -15,7 +15,6 @@
 #import <UIKit/UIKit.h>
 
 #import "MaterialButtons.h"
-#import "MDCMinimumOS.h"  // IWYU pragma: keep
 
 @class MDCFloatingButton;
 

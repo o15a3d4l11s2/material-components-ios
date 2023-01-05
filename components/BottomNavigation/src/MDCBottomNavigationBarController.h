@@ -15,7 +15,6 @@
 #import <UIKit/UIKit.h>
 
 #import <MaterialComponents/MaterialBottomNavigation.h>
-#import "MDCMinimumOS.h"  // IWYU pragma: keep
 
 @protocol MDCBottomNavigationBarControllerDelegate;
 @protocol MDCBottomNavigationBarDelegate;

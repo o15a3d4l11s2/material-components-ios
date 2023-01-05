@@ -14,7 +14,6 @@
 
 #import <UIKit/UIKit.h>
 
-#import "MDCMinimumOS.h"  // IWYU pragma: keep
 
 /** A configuration that specifies the appearance and behavior of a dot badge and its contents. */
 __attribute__((objc_subclassing_restricted)) API_AVAILABLE(ios(13.0))

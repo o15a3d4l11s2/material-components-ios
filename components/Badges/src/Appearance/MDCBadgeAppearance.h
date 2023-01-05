@@ -14,7 +14,6 @@
 
 #import <UIKit/UIKit.h>
 
-#import "MDCMinimumOS.h"  // IWYU pragma: keep
 
 /** An object for customizing the appearance of a badge. */
 __attribute__((objc_subclassing_restricted))

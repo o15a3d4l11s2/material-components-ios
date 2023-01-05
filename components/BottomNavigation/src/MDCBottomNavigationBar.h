@@ -19,7 +19,6 @@
 // migrated to no longer import MDCBottomNavigationBarDelegate as a transitive dependency.
 #import "MDCBottomNavigationBarDelegate.h"
 #import "MaterialElevation.h"
-#import "MDCMinimumOS.h"  // IWYU pragma: keep
 #import "MaterialShadow.h"
 #import "MaterialShadowElevations.h"
 
