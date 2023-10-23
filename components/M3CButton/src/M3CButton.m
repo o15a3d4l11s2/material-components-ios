@@ -3,6 +3,7 @@
 #import <UIKit/UIKit.h>
 
 #import "M3CButton.h"
+#import "M3CAnimationActions.h"
 #import "MDCShadow.h"
 #import "MDCShadowsCollection.h"
 
@@ -53,6 +54,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)initCommon {
   self.animationDuration = 0.3f;
   self.minimumHeight = 44.0f;
+  self.minimumWidth = 44.0f;
   _borderColors = [NSMutableDictionary dictionary];
   _shadows = [NSMutableDictionary dictionary];
   _customInsetAvailable = NO;
@@ -98,6 +100,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)setMinimumHeight:(CGFloat)minimumHeight {
   _minimumHeight = minimumHeight;
+  [self setNeedsLayout];
+}
+
+- (void)setMinimumWidth:(CGFloat)minimumWidth {
+  _minimumWidth = minimumWidth;
   [self setNeedsLayout];
 }
 
@@ -205,7 +212,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)updateInsets {
   if (!_customInsetAvailable) {
-    BOOL hasTitle = self.currentTitle.length > 0;
+    BOOL hasTitle = self.currentTitle.length > 0 || self.currentAttributedTitle.length > 0;
     BOOL hasImage = self.currentImage.size.width > 0;
     if (hasImage && hasTitle) {
       self.contentEdgeInsets = self.edgeInsetsWithImageAndTitle;
@@ -220,6 +227,16 @@ NS_ASSUME_NONNULL_BEGIN
       self.imageEdgeInsets = UIEdgeInsetsZero;
     }
     _customInsetAvailable = NO;
+  }
+}
+
+- (void)setTextCanWrap:(BOOL)textCanWrap {
+  if (_textCanWrap != textCanWrap) {
+    self.titleLabel.lineBreakMode =
+        textCanWrap ? NSLineBreakByWordWrapping : NSLineBreakByTruncatingMiddle;
+    self.titleLabel.numberOfLines = textCanWrap ? 0 : 1;
+
+    _textCanWrap = textCanWrap;
   }
 }
 
@@ -258,6 +275,11 @@ NS_ASSUME_NONNULL_BEGIN
   [self updateInsets];
 }
 
+- (void)setAttributedTitle:(nullable NSAttributedString *)title forState:(UIControlState)state {
+  [super setAttributedTitle:title forState:state];
+  [self updateInsets];
+}
+
 - (void)setImage:(nullable UIImage *)image forState:(UIControlState)state {
   [super setImage:image forState:state];
   [self updateInsets];
@@ -281,30 +303,65 @@ NS_ASSUME_NONNULL_BEGIN
   }
 }
 
-- (CGSize)clampToMinimumnSize:(CGSize)size {
+- (CGSize)clampToMinimumSize:(CGSize)size {
   if (size.height < _minimumHeight) {
     size.height = _minimumHeight;
   }
-  if (size.height > size.width) {
-    size.width = size.height;
-  }
+  size.width = MAX(MAX(size.height, size.width), _minimumWidth);
   return size;
 }
 
+- (CGSize)sizeBasedOnLabel {
+  CGFloat textWidth = self.titleLabel.preferredMaxLayoutWidth;
+  if (textWidth <= 0) {
+    self.titleLabel.preferredMaxLayoutWidth = self.frame.size.width - self.contentEdgeInsets.left -
+                                              self.contentEdgeInsets.right -
+                                              self.imageView.frame.size.width;
+  }
+  CGSize titleLabelSize = self.titleLabel.intrinsicContentSize;
+  self.titleLabel.preferredMaxLayoutWidth = textWidth;
+  return CGSizeMake(
+      titleLabelSize.width + self.contentEdgeInsets.left + self.contentEdgeInsets.right +
+          self.imageView.frame.size.width,
+      titleLabelSize.height + self.contentEdgeInsets.top + self.contentEdgeInsets.bottom);
+}
+
 #pragma mark - Overrides
+
 - (CGSize)intrinsicContentSize {
   [self updateInsets];
-  CGSize size = [super intrinsicContentSize];
-  CGSize clampToMinimumnSize = [self clampToMinimumnSize:size];
-  [self setCapsuleCornersBasedOn:clampToMinimumnSize];
-  return clampToMinimumnSize;
+  CGSize size;
+  if ([self textCanWrap]) {
+    size = [self sizeBasedOnLabel];
+  } else {
+    size = [super intrinsicContentSize];
+  }
+  CGSize clampToMinimumSize = [self clampToMinimumSize:size];
+  [self setCapsuleCornersBasedOn:clampToMinimumSize];
+  return clampToMinimumSize;
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
-  CGSize superSize = [super sizeThatFits:size];
-  CGSize clampToMinimumnSize = [self clampToMinimumnSize:superSize];
-  [self setCapsuleCornersBasedOn:clampToMinimumnSize];
-  return clampToMinimumnSize;
+  CGSize newSize;
+  if ([self textCanWrap]) {
+    newSize = [self sizeBasedOnLabel];
+  } else {
+    newSize = [super sizeThatFits:size];
+  }
+  CGSize clampToMinimumSize = [self clampToMinimumSize:newSize];
+  [self setCapsuleCornersBasedOn:clampToMinimumSize];
+  return clampToMinimumSize;
+}
+
+#pragma mark - CALayerDelegate
+
+- (nullable id<CAAction>)actionForLayer:(CALayer *)layer forKey:(NSString *)key {
+  if (layer == self.layer && M3CIsMDCShadowPathKey(key)) {
+    // Provide a custom action for the view's layer's shadow path only.
+    return M3CShadowPathActionForLayer(layer);
+  }
+
+  return [super actionForLayer:layer forKey:key];
 }
 
 @end

@@ -23,6 +23,8 @@
 #import "M3CButton.h"
 #import "MaterialShadowElevations.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 @class MDCAlertAction;
 @class MDCAlertController;
 @protocol MDCAlertControllerDelegate;
@@ -259,6 +261,13 @@ typedef BOOL (^MDCAttributedMessageActionHandler)(NSURL *_Nonnull URL, NSRange r
 @property(nonatomic, strong, nullable) UIView *accessoryView;
 
 /**
+ By setting this property to @c YES, the accessoryView will be placed on top of the message.
+
+ Defaults to @c NO.
+ */
+@property(nonatomic, assign) BOOL shouldPlaceAccessoryViewAboveMessage;
+
+/**
  Notifies the alert controller that the size of the accessory view needs to be recalculated due to
  content changes. Note that MDCAccessorizedAlertController will automatically recalculate the
  accessory view's size if the alert's width changes.
@@ -288,6 +297,16 @@ typedef BOOL (^MDCAttributedMessageActionHandler)(NSURL *_Nonnull URL, NSRange r
 @property(nonatomic, assign) CGFloat presentationInitialScaleFactor;
 
 /**
+ The spacing between the dialog and the @c safeArea of the presenting view controller.
+
+ @note Dialogs have a minimum width of 280pt. If the horizonal insets force the dialog to be less
+ than the 280pt required the dialog will apply equal insets to both sides to allow the 280pt.
+
+ Defaults to {24, 20, 24, 20}.
+ */
+@property(nonatomic, assign) UIEdgeInsets dialogEdgeInsets;
+
+/**
  By setting this property to @c YES, the Ripple component will be used instead of Ink
  to display visual feedback to the user.
 
@@ -309,7 +328,7 @@ typedef BOOL (^MDCAttributedMessageActionHandler)(NSURL *_Nonnull URL, NSRange r
 
 /** @c MDCAlertController handles its own transitioning delegate. */
 - (void)setTransitioningDelegate:
-    (_Nullable id<UIViewControllerTransitioningDelegate>)transitioningDelegate NS_UNAVAILABLE;
+    (nullable id<UIViewControllerTransitioningDelegate>)transitioningDelegate NS_UNAVAILABLE;
 
 /** @c MDCAlertController.modalPresentationStyle is always @c UIModalPresentationCustom. */
 - (void)setModalPresentationStyle:(UIModalPresentationStyle)modalPresentationStyle NS_UNAVAILABLE;
@@ -471,7 +490,7 @@ typedef void (^MDCActionHandler)(MDCAlertAction *_Nonnull action);
  @return An initialized @c MDCActionAlert object.
  */
 + (nonnull instancetype)actionWithTitle:(nonnull NSString *)title
-                                handler:(__nullable MDCActionHandler)handler;
+                                handler:(nullable MDCActionHandler)handler;
 
 /**
  An action that renders at the bottom of an alert controller as a button of the given emphasis.
@@ -486,7 +505,7 @@ typedef void (^MDCActionHandler)(MDCAlertAction *_Nonnull action);
  */
 + (nonnull instancetype)actionWithTitle:(nonnull NSString *)title
                                emphasis:(MDCActionEmphasis)emphasis
-                                handler:(__nullable MDCActionHandler)handler;
+                                handler:(nullable MDCActionHandler)handler;
 
 /** Alert actions must be created with actionWithTitle:handler: */
 - (nonnull instancetype)init NS_UNAVAILABLE;
@@ -535,3 +554,5 @@ typedef void (^MDCActionHandler)(MDCAlertAction *_Nonnull action);
 @property(nonatomic, assign) BOOL dismissOnAction;
 
 @end
+
+NS_ASSUME_NONNULL_END

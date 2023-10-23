@@ -31,9 +31,23 @@
  The color for the background of the Snackbar message view.
 
  The default color is a dark gray color.
+
+ If you are using the GM3 branding API, customize the background color by setting this property
+ after calling the branding API.
  */
 @property(nonatomic, strong, nullable)
     UIColor *snackbarMessageViewBackgroundColor UI_APPEARANCE_SELECTOR;
+
+/**
+ The color for the background of the Snackbar message view when highlighted.
+
+ The default color is nil (no change on highlight).
+
+ If you are using the GM3 branding API, customize the highlight color by setting this property
+ after calling the branding API.
+ */
+@property(nonatomic, strong, nullable)
+    UIColor *snackbarMessageViewHighlightColor UI_APPEARANCE_SELECTOR;
 
 /**
  The color for the shadow color for the Snackbar message view.
@@ -47,43 +61,51 @@
  The color for the message text in the Snackbar message view.
 
  The default color is @c whiteColor.
+
+ If you are using the GM3 branding API, customize the message text color by setting this property
+ after calling the branding API.
  */
 @property(nonatomic, strong, nullable) UIColor *messageTextColor UI_APPEARANCE_SELECTOR;
 
 /**
  The font for the message text in the Snackbar message view.
+
+ If you are using the GM3 branding API, customize the message font by setting this property after
+ calling the branding API.
  */
 @property(nonatomic, strong, nullable) UIFont *messageFont UI_APPEARANCE_SELECTOR;
 
 /**
  The font for the button text in the Snackbar message view.
+
+ If you are using the GM3 branding API, customize the button font by setting this property after
+ calling the branding API.
  */
 @property(nonatomic, strong, nullable) UIFont *buttonFont UI_APPEARANCE_SELECTOR;
 
-// TODO(b/238930139): Remove usage of this deprecated API.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 /**
  The action button for the snackbar, if `message.action` is set.
  */
-@property(nonatomic, strong, nullable) MDCButton *actionButton;
-#pragma clang diagnostic pop
-
-// TODO(b/238930139): Remove usage of this deprecated API.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-/**
- Deprecated. Please use `actionButton` instead. Returns an array with `actionButton` if
- `actionButton` is not nil, otherewise returns an empty array.
- */
-@property(nonatomic, strong, nullable, readonly)
-    NSArray<MDCButton *> *actionButtons __deprecated_msg("Please use `actionButton` instead`.");
-#pragma clang diagnostic pop
+@property(nonatomic, strong, nullable) UIButton *actionButton;
 
 /**
  The elevation of the snackbar view.
+
+ If `MDCSnackbarManager.usesGM3Shapes` is true, this property defaults to
+ MDCShadowElevationNone.
+
+ If you are using the GM3 branding API, customize the elevation by configuring it after calling the
+ branding API. See go/material-ios-elevation for details on how to do so.
  */
 @property(nonatomic, assign) MDCShadowElevation elevation;
+
+/**
+ The corner radius of the snackbar view.
+
+ If you are using the GM3 branding API, customize the corner radius by setting this property after
+ calling the branding API.
+ */
+@property(nonatomic, assign) CGFloat cornerRadius;
 
 /**
  The @c accessibilityLabel to apply to the message of the Snackbar.
@@ -124,6 +146,9 @@
 
 /**
  Sets the button title color for a particular control state.
+
+ If you are using the GM3 branding API, customize the button title color by
+ setting this value after calling the branding API.
 
  @param titleColor The title color.
  @param state The control state.

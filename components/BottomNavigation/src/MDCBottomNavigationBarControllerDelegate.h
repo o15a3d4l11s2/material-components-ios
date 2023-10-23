@@ -15,6 +15,8 @@
 #import <UIKit/UIKit.h>
 
 
+NS_ASSUME_NONNULL_BEGIN
+
 @class MDCBottomNavigationBarController;
 
 /**
@@ -42,4 +44,16 @@
             (nonnull MDCBottomNavigationBarController *)bottomNavigationBarController
            shouldSelectViewController:(nonnull UIViewController *)viewController;
 
+/**
+ Delegates may implement this method if they want to execute some code right
+ after the controller changes layout in @c MDCBottomNavigationBarLayoutModeAutomatic
+ mode.
+ @warning Do not rely on this method when
+ @c MDCBottomNavigationBarLayoutModeVertical or
+ @c MDCBottomNavigationBarLayoutModeHorizontal mode is used.
+ */
+- (void)bottomNavigationBarControllerDidUpdateLayout;
+
 @end
+
+NS_ASSUME_NONNULL_END

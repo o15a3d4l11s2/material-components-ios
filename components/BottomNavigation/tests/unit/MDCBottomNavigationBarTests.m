@@ -562,23 +562,6 @@ static NSString *const kTestItemTitleText = @"Title";
   XCTAssertNil(result);
 }
 
-- (void)testItemForPointInsideNavigationBarOutsideItemViewReturnsNil {
-  // Given
-  UITabBarItem *item1 = [[UITabBarItem alloc] initWithTitle:@"1" image:nil tag:0];
-  UITabBarItem *item2 = [[UITabBarItem alloc] initWithTitle:@"2" image:nil tag:0];
-  CGFloat navBarHeight = 200;
-  self.bottomNavBar.frame = CGRectMake(0, 0, 320, navBarHeight);
-  CGPoint testPoint = CGPointMake(0, navBarHeight - 10);
-
-  // When
-  self.bottomNavBar.items = @[ item1, item2 ];
-  [self.bottomNavBar layoutIfNeeded];
-  UITabBarItem *result = [self.bottomNavBar tabBarItemForPoint:testPoint];
-
-  // Then
-  XCTAssertNil(result);
-}
-
 - (void)testItemForPointInsideNavigationBarNoTabBarItemsReturnsNil {
   // Given
   self.bottomNavBar.frame = CGRectMake(0, 0, 320, 56);
@@ -725,6 +708,68 @@ static NSString *const kTestItemTitleText = @"Title";
   // Then
   XCTAssertEqual([self.bottomNavBar sizeThatFits:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)].height,
                  barHeight);
+}
+
+- (void)testSettingSelectionIndicatorColor {
+  // Given
+  UIColor *testColor = UIColor.greenColor;
+  UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:@"Title" image:nil tag:0];
+
+  // When
+  self.bottomNavBar.items = @[ item ];
+  self.bottomNavBar.selectionIndicatorColor = testColor;
+
+  // Then
+  XCTAssertEqualObjects(self.bottomNavBar.itemViews.firstObject.selectionIndicatorColor,
+                        UIColor.greenColor);
+}
+
+- (void)testSettingSelectionIndicatorColorBeforeSettingItems {
+  // Given
+  UIColor *testColor = UIColor.greenColor;
+  UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:@"Title" image:nil tag:0];
+
+  // When
+  self.bottomNavBar.selectionIndicatorColor = testColor;
+  self.bottomNavBar.items = @[ item ];
+
+  // Then
+  XCTAssertEqualObjects(self.bottomNavBar.itemViews.firstObject.selectionIndicatorColor,
+                        UIColor.greenColor);
+}
+
+- (void)testSettingSelectionIndicatorSize {
+  // Given
+  CGSize testSize = CGSizeMake(20, 20);
+  UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:@"Title" image:nil tag:0];
+
+  // When
+  self.bottomNavBar.items = @[ item ];
+  self.bottomNavBar.selectionIndicatorSize = testSize;
+
+  // Then
+  XCTAssertTrue(
+      CGSizeEqualToSize(self.bottomNavBar.itemViews.firstObject.selectionIndicatorSize, testSize),
+      @"%@ not equal to %@",
+      NSStringFromCGSize(self.bottomNavBar.itemViews.firstObject.selectionIndicatorSize),
+      NSStringFromCGSize(testSize));
+}
+
+- (void)testSettingSelectionIndicatorSizeBeforeSettingItems {
+  // Given
+  CGSize testSize = CGSizeMake(20, 20);
+  UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:@"Title" image:nil tag:0];
+
+  // When
+  self.bottomNavBar.selectionIndicatorSize = testSize;
+  self.bottomNavBar.items = @[ item ];
+
+  // Then
+  XCTAssertTrue(
+      CGSizeEqualToSize(self.bottomNavBar.itemViews.firstObject.selectionIndicatorSize, testSize),
+      @"%@ not equal to %@",
+      NSStringFromCGSize(self.bottomNavBar.itemViews.firstObject.selectionIndicatorSize),
+      NSStringFromCGSize(testSize));
 }
 
 #pragma mark - UILargeContentViewerItem

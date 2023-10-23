@@ -35,6 +35,7 @@
 - (void)configureAppearanceForItemView:(MDCBottomNavigationItemView *)itemView {
   itemView.badgeAppearance = self.itemBadgeAppearance;
   itemView.selectionIndicatorSize = self.selectionIndicatorSize;
+  itemView.showsSelectionIndicator = self.showsSelectionIndicator;
 
   // TODO(b/234850214): Delete once everyone has migrated to itemBadgeAppearance.
   [self configureBadgeForItemViewLegacy:itemView];
@@ -85,12 +86,8 @@
   itemView.badgeText = item.badgeValue;
   itemView.badgeColor = item.badgeColor;
 
-#if MDC_AVAILABLE_SDK_IOS(13_0)
-  if (@available(iOS 13, *)) {
-    itemView.largeContentImageInsets = item.largeContentSizeImageInsets;
-    itemView.largeContentImage = item.largeContentSizeImage;
-  }
-#endif  // MDC_AVAILABLE_SDK_IOS(13_0)
+  itemView.largeContentImageInsets = item.largeContentSizeImageInsets;
+  itemView.largeContentImage = item.largeContentSizeImage;
 }
 
 - (void)configureTitleForItemView:(MDCBottomNavigationItemView *)itemView {

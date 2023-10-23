@@ -392,10 +392,12 @@ static const int64_t kDispatchTimeWait = (int64_t)((CGFloat)0.2 * NSEC_PER_SEC);
   [self waitForExpectationsWithTimeout:3 handler:nil];
 
   // Then
-  MDCButton *actionButton = self.manager.internalManager.currentSnackbar.actionButton;
-  XCTAssertFalse(actionButton.uppercaseTitle);
-  XCTAssertEqual(actionButton.disabledAlpha, 0.5);
-  XCTAssertEqualObjects(UIColor.redColor, actionButton.inkColor);
+  UIButton *actionButton = self.manager.internalManager.currentSnackbar.actionButton;
+  XCTAssertTrue([actionButton isKindOfClass:[MDCButton class]]);
+  MDCButton *button = (MDCButton *)actionButton;
+  XCTAssertFalse(button.uppercaseTitle);
+  XCTAssertEqual(button.disabledAlpha, 0.5);
+  XCTAssertEqualObjects(UIColor.redColor, button.inkColor);
 }
 
 - (void)testTraitCollectionDidChangeCalledWhenTraitCollectionChanges {
@@ -505,7 +507,7 @@ static const int64_t kDispatchTimeWait = (int64_t)((CGFloat)0.2 * NSEC_PER_SEC);
   XCTAssertFalse(self.manager.internalManager.currentSnackbar.accessibilityElementsHidden);
 }
 
-- (void)testAccessibilityElementsUpdateWhenVoiceOverStatusChanges {
+- (void)testAccessibilityElementsVisibleWhenVoiceOverStatusEnabled {
   // Given
   MDCSnackbarMessageAction *action = [[MDCSnackbarMessageAction alloc] init];
   action.title = @"Tap Me";
@@ -521,8 +523,7 @@ static const int64_t kDispatchTimeWait = (int64_t)((CGFloat)0.2 * NSEC_PER_SEC);
     });
   });
   [self waitForExpectationsWithTimeout:3 handler:nil];
-  XCTAssertTrue(self.manager.internalManager.currentSnackbar.accessibilityElementsHidden);
-
+  XCTAssertFalse(self.manager.internalManager.currentSnackbar.accessibilityElementsHidden);
   // When
   self.manager.internalManager.isVoiceOverRunningOverride = YES;
   [[NSNotificationCenter defaultCenter]
@@ -706,43 +707,6 @@ static const int64_t kDispatchTimeWait = (int64_t)((CGFloat)0.2 * NSEC_PER_SEC);
   // Then
   XCTAssertNil(self.manager.internalManager.currentSnackbar);
   MDCSnackbarMessage.usesLegacySnackbar = NO;
-}
-
-- (void)testLegacyActionButtonsMatchesActionButton {
-  // Given
-  MDCSnackbarMessageAction *action = [[MDCSnackbarMessageAction alloc] init];
-  action.title = @"Tap Me";
-  self.message.action = action;
-
-  // When
-  [self.manager showMessage:self.message];
-  XCTestExpectation *expectation = [self expectationWithDescription:@"completed"];
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [expectation fulfill];
-  });
-  [self waitForExpectationsWithTimeout:3 handler:nil];
-
-  // Then
-  MDCButton *actionButton = self.manager.internalManager.currentSnackbar.actionButton;
-  NSArray *actionButtons = self.manager.internalManager.currentSnackbar.actionButtons;
-  XCTAssertEqual(actionButtons.count, 1.0);
-  XCTAssertEqual(actionButtons.firstObject, actionButton);
-}
-
-- (void)testLegacyActionButtonsReturnsEmptyArrayWhenNil {
-  // When
-  [self.manager showMessage:self.message];
-  XCTestExpectation *expectation = [self expectationWithDescription:@"completed"];
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [expectation fulfill];
-  });
-  [self waitForExpectationsWithTimeout:3 handler:nil];
-
-  // Then
-  MDCButton *actionButton = self.manager.internalManager.currentSnackbar.actionButton;
-  NSArray *actionButtons = self.manager.internalManager.currentSnackbar.actionButtons;
-  XCTAssertNil(actionButton);
-  XCTAssertEqual(actionButtons.count, 0);
 }
 
 @end

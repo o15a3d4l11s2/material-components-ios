@@ -13,8 +13,9 @@
 // limitations under the License.
 
 #import "MDCSnackbarMessage.h"
-#import "MDCSnackbarMessageView.h"
 #import "private/MDCSnackbarMessageInternal.h"
+#import "MDCAvailability.h"
+#import "MDCSnackbarMessageView.h"
 
 static const NSTimeInterval kDefaultDuration = 4;
 
@@ -108,7 +109,17 @@ static BOOL _usesLegacySnackbar = NO;
 #pragma mark Text
 
 - (void)setText:(NSString *)text {
-  self.attributedText = [[NSAttributedString alloc] initWithString:[text copy]];
+  NSDictionary *attributes = @{};
+
+  // TODO(b/298435271): Remove the #if check below once all users are building with Xcode 15.
+#if MDC_AVAILABLE_SDK_IOS(17_0)
+  if (@available(iOS 17.0, *)) {
+    // Default to low-priority announcements.
+    attributes = @{UIAccessibilitySpeechAttributeAnnouncementPriority : UIAccessibilityPriorityLow};
+  }
+#endif
+  self.attributedText = [[NSAttributedString alloc] initWithString:[text copy]
+                                                        attributes:attributes];
 }
 
 - (NSString *)text {
@@ -126,11 +137,34 @@ static BOOL _usesLegacySnackbar = NO;
 
 #pragma mark - A11y
 
-- (NSString *)voiceNotificationText {
-  if ([self.accessibilityLabel length]) {
-    return self.accessibilityLabel;
+- (void)setAccessibilityLabel:(NSString *)accessibilityLabel {
+  if (accessibilityLabel == nil) {
+    self.attributedAccessibilityLabel = nil;
   } else {
-    return self.text;
+    NSDictionary *attributes = @{};
+
+    // TODO(b/298435271): Remove the #if check below once all users are building with Xcode 15.
+#if MDC_AVAILABLE_SDK_IOS(17_0)
+    if (@available(iOS 17.0, *)) {
+      // Default to low-priority announcements.
+      attributes =
+          @{UIAccessibilitySpeechAttributeAnnouncementPriority : UIAccessibilityPriorityLow};
+    }
+#endif
+    self.attributedAccessibilityLabel =
+        [[NSAttributedString alloc] initWithString:[accessibilityLabel copy] attributes:attributes];
+  }
+}
+
+- (NSString *)accessibilityLabel {
+  return [self.attributedAccessibilityLabel string];
+}
+
+- (NSAttributedString *)voiceNotificationText {
+  if (self.attributedAccessibilityLabel) {
+    return self.attributedAccessibilityLabel;
+  } else {
+    return self.attributedText;
   }
 }
 

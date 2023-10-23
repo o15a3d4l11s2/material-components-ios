@@ -16,6 +16,8 @@
 
 #import <MaterialComponents/MaterialBottomNavigation.h>
 
+NS_ASSUME_NONNULL_BEGIN
+
 @protocol MDCBottomNavigationBarControllerDelegate;
 @protocol MDCBottomNavigationBarDelegate;
 
@@ -41,12 +43,67 @@ API_AVAILABLE(ios(12.0))
 @interface MDCBottomNavigationBarController : UIViewController <MDCBottomNavigationBarDelegate>
 
 /**
+  States used to configure bottom navigation bar's layout mode.
+  */
+typedef NS_ENUM(NSInteger, MDCBottomNavigationBarLayoutMode) {
+
+  // Default behavior is to have the controller be in automatic layout mode.
+  // Automatic mode uses size classes and view size to determine when to use
+  // vertical layout vs. horizontal layout.
+  // Example: on a plus sized iPhone, rotating to landscape will trigger
+  // vertical layout, rotating to portrait will trigger horizontal layout.
+  MDCBottomNavigationBarLayoutModeAutomatic = 0,
+
+  // The controller will always use vertical layout mode.
+  MDCBottomNavigationBarLayoutModeVertical = 1,
+
+  // The controller will always use horizontal layout mode.
+  MDCBottomNavigationBarLayoutModeHorizontal = 2
+};
+
+/**
+ Configures the layout mode of the bottom navigation bar.
+
+ Default is MDCBottomNavigationBarLayoutModeHorizontal. This will become
+ MDCBottomNavigationBarLayoutModeAutomatic in the near future.
+ */
+@property(nonatomic, assign) MDCBottomNavigationBarLayoutMode layoutMode;
+
+/**
  The bottom navigation bar that hosts the tab bar items.
  @warning This controller sets itself as the navigation bar's delegate.  If you would like to
  observe changes to the navigation bar, conform to @c MDCBottomNavigationBarControllerDelegate
  and set the delegate property of this controller.
  */
 @property(nonatomic, strong, readonly, nonnull) MDCBottomNavigationBar *navigationBar;
+
+/**
+ Configures whether the navigation bar should show labels in vertical layout.
+
+ Default @c NO.
+ */
+@property(nonatomic, assign) BOOL displayItemTitlesInVerticalLayout;
+
+/**
+ Configures whether the navigation bar should play haptics on selection change.
+
+ Default @c NO.
+ */
+@property(nonatomic, assign) BOOL enableHaptics;
+
+/**
+ Insets applied to the content.
+
+ Defaults to @c UIEdgeInsetsZero.
+ */
+@property(nonatomic, assign) UIEdgeInsets contentInsets;
+
+/**
+ Corner radius applied to the content view.
+
+ Defaults to 0.
+ */
+@property(nonatomic, assign) CGFloat contentCornerRadius;
 
 /**
  An array of view controllers to display when their corresponding tab bar item is selected in the
@@ -84,6 +141,11 @@ API_AVAILABLE(ios(12.0))
 @property(nonatomic, getter=isNavigationBarHidden) BOOL navigationBarHidden;
 
 /**
+ A UIColor value that sets the background color for both @c navigationBar and @c view.
+ */
+@property(nonatomic, strong, nullable) UIColor *backgroundColor;
+
+/**
  Shows or hides @c navigationBar with optional animation.
 
  @param hidden Whether @c navigationBar should be hidden.
@@ -99,3 +161,5 @@ API_AVAILABLE(ios(12.0))
               didSelectItem:(nonnull UITabBarItem *)item NS_REQUIRES_SUPER;
 
 @end
+
+NS_ASSUME_NONNULL_END

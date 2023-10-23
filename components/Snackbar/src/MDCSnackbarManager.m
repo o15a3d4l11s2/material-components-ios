@@ -101,7 +101,15 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
  */
 @property(nonatomic, weak) id<MDCSnackbarManagerDelegate> delegate;
 
-- (instancetype)initWithSnackbarManager:(__weak MDCSnackbarManager *)manager;
+/**
+ Creates a MDCSnackbarManagerInternal associated with a given scene.
+
+ @param manager The manager that MDCSnackbarManagerInternal wraps.
+ @param windowScene An optional WindowScene to show snackbars on. If this is omitted, we will make a
+ good-effort guess of which window to show a snackbar on (see "bestGuessWindow").
+ */
+- (instancetype)initWithSnackbarManager:(__weak MDCSnackbarManager *)manager
+                            windowScene:(nullable UIWindowScene *)windowScene;
 
 @end
 
@@ -121,12 +129,16 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
 
 @end
 
-@implementation MDCSnackbarManagerInternal
+@implementation MDCSnackbarManagerInternal {
+  UIWindowScene *_windowScene;
+}
 
-- (instancetype)initWithSnackbarManager:(MDCSnackbarManager *__weak)manager {
+- (instancetype)initWithSnackbarManager:(MDCSnackbarManager *__weak)manager
+                            windowScene:(nullable UIWindowScene *)windowScene {
   self = [super init];
   if (self) {
     _manager = manager;
+    _windowScene = windowScene;
     _pendingMessages = [[NSMutableArray alloc] init];
     _suspensionTokens = [NSMutableDictionary dictionary];
 
@@ -256,7 +268,13 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
                 UIAccessibilityPostNotification(self.manager.focusAccessibilityNotification,
                                                 snackbarView);
               } else {
-                snackbarView.accessibilityElementsHidden = YES;
+                // If VoiceOver is running (and the snackbar does not allow focus), hide
+                // accessibility elements. If VoiceOver is not running, hide elements based on what
+                // the snackbar manager's `accessibilityElementsHidden` property is set to. This
+                // check is performed to account for VoiceControl activation of the snackbar's
+                // dismiss action.
+                snackbarView.accessibilityElementsHidden =
+                    [self isVoiceOverRunning] || self.accessibilityElementsHidden;
                 UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
                                                 message.voiceNotificationText);
               }
@@ -410,9 +428,16 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
 - (UIWindow *)bestGuessWindow {
   UIApplication *application = [UIApplication mdc_safeSharedApplication];
 
+  NSArray<UIWindow *> *windows;
+  if (_windowScene != nil) {
+    windows = _windowScene.windows;
+  } else {
+    windows = [UIApplication mdc_safeSharedApplication].windows;
+  }
+
   // Check all of the windows in existence for an overlay window, because that's what we prefer to
   // present in.
-  for (UIWindow *window in application.windows) {
+  for (UIWindow *window in windows) {
     if ([window isKindOfClass:[MDCOverlayWindow class]]) {
       return window;
     }
@@ -421,21 +446,27 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
   // Next see if the application's delegate declares a window. That's a good indicator of it being
   // the 'main' window for an application.
   if ([application.delegate respondsToSelector:@selector(window)]) {
-    id potentialWindow = application.delegate.window;
-    if (potentialWindow != nil) {
+    UIWindow *potentialWindow = application.delegate.window;
+    BOOL belongsToRightScene = (_windowScene == nil || potentialWindow.windowScene == _windowScene);
+    if (potentialWindow != nil && belongsToRightScene) {
       return potentialWindow;
     }
   }
 
-  // Check for the key window in the list of windows. This allows to find the correct window
+  // Check for the key window in the list of windows. This allows us to find the correct window
   // in apps with multi-window support.
-  for (UIWindow *window in [UIApplication mdc_safeSharedApplication].windows) {
+  for (UIWindow *window in windows) {
     if (window.isKeyWindow) {
       return window;
     }
   }
 
   // Default to the key window, since we couldn't find anything better.
+  if (@available(iOS 15, *)) {
+    if (_windowScene) {
+      return [_windowScene keyWindow];
+    }
+  }
   return [[UIApplication mdc_safeSharedApplication] keyWindow];
 }
 
@@ -592,10 +623,11 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
   return defaultManager;
 }
 
-- (instancetype)init {
+- (instancetype)initWithWindowScene:(nullable UIWindowScene *)windowScene {
   self = [super init];
   if (self) {
-    _internalManager = [[MDCSnackbarManagerInternal alloc] initWithSnackbarManager:self];
+    _internalManager = [[MDCSnackbarManagerInternal alloc] initWithSnackbarManager:self
+                                                                       windowScene:windowScene];
     _uppercaseButtonTitle = YES;
     _disabledButtonAlpha = (CGFloat)0.12;
     _messageElevation = MDCShadowElevationSnackbar;
@@ -603,8 +635,13 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
     _focusAccessibilityNotification = UIAccessibilityLayoutChangedNotification;
     _shouldShowMessageWhenVoiceOverIsRunning = YES;
     _enableDismissalAccessibilityAffordance = NO;
+    _usesGM3Shapes = NO;
   }
   return self;
+}
+
+- (instancetype)init {
+  return [self initWithWindowScene:nil];
 }
 
 - (void)setDelegate:(id<MDCSnackbarManagerDelegate>)delegate {
@@ -655,6 +692,16 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
   });
 }
 
+- (CGFloat)topMargin {
+  return self.internalManager.overlayView.topMargin;
+}
+
+- (void)setTopMargin:(CGFloat)topMargin {
+  NSAssert([NSThread isMainThread], @"setTopMargin must be called on main thread.");
+
+  self.internalManager.overlayView.topMargin = topMargin;
+}
+
 - (CGFloat)leadingMargin {
   return self.internalManager.overlayView.leadingMargin;
 }
@@ -681,14 +728,24 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
   self.internalManager.overlayView.bottomOffset = offset;
 }
 
-- (void)setAlignment:(MDCSnackbarAlignment)alignment {
-  NSAssert([NSThread isMainThread], @"setAlignment must be called on main thread.");
+- (void)setHorizontalAlignment:(MDCSnackbarHorizontalAlignment)horizontalAlignment {
+  NSAssert([NSThread isMainThread], @"setHorizontalAlignment must be called on main thread.");
 
-  self.internalManager.overlayView.alignment = alignment;
+  self.internalManager.overlayView.horizontalAlignment = horizontalAlignment;
 }
 
-- (MDCSnackbarAlignment)alignment {
-  return self.internalManager.overlayView.alignment;
+- (MDCSnackbarHorizontalAlignment)horizontalAlignment {
+  return self.internalManager.overlayView.horizontalAlignment;
+}
+
+- (void)setVerticalAlignment:(MDCSnackbarVerticalAlignment)verticalAlignment {
+  NSAssert([NSThread isMainThread], @"setVerticalAlignment must be called on main thread.");
+
+  self.internalManager.overlayView.verticalAlignment = verticalAlignment;
+}
+
+- (MDCSnackbarVerticalAlignment)verticalAlignment {
+  return self.internalManager.overlayView.verticalAlignment;
 }
 
 #pragma mark - Suspension
@@ -822,7 +879,11 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
 - (void)setUppercaseButtonTitle:(BOOL)uppercaseButtonTitle {
   _uppercaseButtonTitle = uppercaseButtonTitle;
   [self runSnackbarUpdatesOnMainThread:^{
-    self.internalManager.currentSnackbar.actionButton.uppercaseTitle = uppercaseButtonTitle;
+    UIButton *currentButton = self.internalManager.currentSnackbar.actionButton;
+    if ([currentButton isKindOfClass:[MDCButton class]]) {
+      MDCButton *button = (MDCButton *)currentButton;
+      button.uppercaseTitle = uppercaseButtonTitle;
+    }
   }];
 }
 
@@ -834,7 +895,11 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
   _disabledButtonAlpha = disabledButtonAlpha;
 
   [self runSnackbarUpdatesOnMainThread:^{
-    self.internalManager.currentSnackbar.actionButton.disabledAlpha = disabledButtonAlpha;
+    UIButton *currentButton = self.internalManager.currentSnackbar.actionButton;
+    if ([currentButton isKindOfClass:[MDCButton class]]) {
+      MDCButton *button = (MDCButton *)currentButton;
+      button.disabledAlpha = disabledButtonAlpha;
+    }
   }];
 }
 
@@ -846,7 +911,11 @@ static NSString *const kAllMessagesCategory = @"$$___ALL_MESSAGES___$$";
   _buttonInkColor = buttonInkColor;
 
   [self runSnackbarUpdatesOnMainThread:^{
-    self.internalManager.currentSnackbar.actionButton.inkColor = buttonInkColor;
+    UIButton *currentButton = self.internalManager.currentSnackbar.actionButton;
+    if ([currentButton isKindOfClass:[MDCButton class]]) {
+      MDCButton *button = (MDCButton *)currentButton;
+      button.inkColor = buttonInkColor;
+    }
   }];
 }
 

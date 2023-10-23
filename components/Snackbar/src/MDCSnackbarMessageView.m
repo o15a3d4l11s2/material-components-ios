@@ -14,11 +14,11 @@
 
 #import <QuartzCore/QuartzCore.h>
 
-#import "CAMediaTimingFunction+MDCAnimationTiming.h"
 #import "MDCAvailability.h"
 #import "MDCButton.h"
 #import "MDCFlatButton.h"
 #import "UIView+MaterialElevationResponding.h"
+#import "M3CButton.h"
 #import "MDCShadowElevations.h"
 #import "MDCShadowLayer.h"
 #import "MDCSnackbarManager.h"
@@ -105,6 +105,11 @@ static const CGFloat kMaxButtonRatio = 0.333333;
 static const CGFloat kMinimumHeight = 48;
 
 /**
+ The minimum height of a snackbar using GM3 shapes.
+ */
+static const CGFloat kMinimumHeightGM3 = 52;
+
+/**
  The minimum height of a multiline Snackbar.
  */
 static const CGFloat kMinimumHeightMultiline = 68;
@@ -119,12 +124,53 @@ static const MDCFontTextStyle kButtonTextStyle = MDCFontTextStyleButton;
  */
 static const CGFloat kMinimumAccessibiltyFontSize = 21;
 
+@protocol MDCHighlightableScrollViewDelegate
+
+- (void)scrollViewTouchBegan:(UIScrollView *)scrollView;
+- (void)scrollViewTouchEnded:(UIScrollView *)scrollView;
+- (void)scrollViewTouchCancelled:(UIScrollView *)scrollView;
+
+@end
+
+@interface MDCHighlightableScrollView : UIScrollView
+
+@property(nullable, nonatomic, weak) id<MDCHighlightableScrollViewDelegate> highlightDelegate;
+
+@end
+
+@implementation MDCHighlightableScrollView
+
+- (id)init {
+  self = [super init];
+  if (self) {
+    self.delaysContentTouches = NO;
+  }
+  return self;
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  [_highlightDelegate scrollViewTouchBegan:self];
+  [super touchesBegan:touches withEvent:event];
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  [_highlightDelegate scrollViewTouchEnded:self];
+  [super touchesEnded:touches withEvent:event];
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  [_highlightDelegate scrollViewTouchCancelled:self];
+  [super touchesCancelled:touches withEvent:event];
+}
+
+@end
+
 #if MDC_AVAILABLE_SDK_IOS(10_0)
 @interface MDCSnackbarMessageView () <CAAnimationDelegate>
 @end
 #endif  // MDC_AVAILABLE_SDK_IOS(10_0)
 
-@interface MDCSnackbarMessageView ()
+@interface MDCSnackbarMessageView () <MDCHighlightableScrollViewDelegate>
 
 /**
  Holds the text label for the main message.
@@ -216,6 +262,9 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
   BOOL _shouldDismissOnOverlayTap;
 
   BOOL _isMultilineText;
+  CGFloat _cornerRadius;
+
+  BOOL _usesGM3Shapes;
 }
 
 @synthesize mdc_overrideBaseElevation = _mdc_overrideBaseElevation;
@@ -254,12 +303,11 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
     _traitCollectionDidChangeBlock = manager.traitCollectionDidChangeBlockForMessageView;
     _mdc_elevationDidChangeBlock = manager.mdc_elevationDidChangeBlockForMessageView;
     self.backgroundColor = _snackbarMessageViewBackgroundColor;
-    if (MDCSnackbarMessage.usesLegacySnackbar) {
-      self.layer.cornerRadius = kLegacyCornerRadius;
-    } else {
-      self.layer.cornerRadius = kCornerRadius;
-    }
-    _elevation = manager.messageElevation;
+    _cornerRadius = MDCSnackbarMessage.usesLegacySnackbar ? kLegacyCornerRadius : kCornerRadius;
+    self.layer.cornerRadius = _cornerRadius;
+
+    _usesGM3Shapes = manager.usesGM3Shapes;
+    _elevation = _usesGM3Shapes ? MDCShadowElevationNone : manager.messageElevation;
     [(MDCShadowLayer *)self.layer setElevation:_elevation];
 
     _anchoredToScreenBottom = YES;
@@ -272,21 +320,32 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
 
     [_containerView setTranslatesAutoresizingMaskIntoConstraints:NO];
     _containerView.backgroundColor = [UIColor clearColor];
-    _containerView.layer.cornerRadius =
-        MDCSnackbarMessage.usesLegacySnackbar ? kLegacyCornerRadius : kCornerRadius;
+    _containerView.layer.cornerRadius = _cornerRadius;
     _containerView.layer.masksToBounds = YES;
 
     // Listen for taps on the background of the view.
     [_containerView addTarget:self
                        action:@selector(handleBackgroundTapped:)
              forControlEvents:UIControlEventTouchUpInside];
+    if (_usesGM3Shapes) {
+      [_containerView addTarget:self
+                         action:@selector(highlightBackground)
+               forControlEvents:UIControlEventTouchDown];
+      [_containerView addTarget:self
+                         action:@selector(unhighlightBackground)
+               forControlEvents:UIControlEventTouchDragExit];
+    }
 
     _buttonGutterTapTarget = [[UIControl alloc] init];
     _buttonGutterTapTarget.translatesAutoresizingMaskIntoConstraints = NO;
     [_buttonGutterTapTarget addTarget:self
                                action:@selector(handleButtonGutterTapped:)
                      forControlEvents:UIControlEventTouchUpInside];
-    [self addSubview:_buttonGutterTapTarget];
+    if (_usesGM3Shapes) {
+      [_containerView addSubview:_buttonGutterTapTarget];
+    } else {
+      [self addSubview:_buttonGutterTapTarget];
+    }
 
     if (MDCSnackbarMessage.usesLegacySnackbar) {
       UISwipeGestureRecognizer *swipeRightGesture =
@@ -328,7 +387,14 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
       _contentView = [[UIView alloc] init];
       _contentView.userInteractionEnabled = NO;
     } else {
-      UIScrollView *contentView = [[UIScrollView alloc] init];
+      UIScrollView *contentView;
+      if (_usesGM3Shapes) {
+        MDCHighlightableScrollView *highlightScrollView = [[MDCHighlightableScrollView alloc] init];
+        highlightScrollView.highlightDelegate = self;
+        contentView = highlightScrollView;
+      } else {
+        contentView = [[UIScrollView alloc] init];
+      }
       contentView.indicatorStyle =
           self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleLight
               ? UIScrollViewIndicatorStyleWhite
@@ -392,10 +458,10 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
                               forAxis:UILayoutConstraintAxisHorizontal];
 
     _label.accessibilityIdentifier = MDCSnackbarMessageTitleAutomationIdentifier;
+
     if (!_enableDismissalAccessibilityAffordance) {
       // For UIAccessibility purposes, the label is the primary 'button' for dismissing the
-      // Snackbar, so we'll make sure the label is treated like a button.
-      _label.accessibilityTraits = UIAccessibilityTraitButton;
+      // Snackbar, so we'll make sure the label is identified with a dismissal hint.
       _label.accessibilityHint = dismissalAccessibilityHint;
     }
 
@@ -420,46 +486,62 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
                                     withManager:(MDCSnackbarManager *)manager {
   // Add button to the view. We'll use this opportunity to determine how much space a button will
   // need, to inform the layout direction.
-  if (message.action) {
-    MDCButton *button = [[MDCSnackbarMessageViewButton alloc] init];
-    [button setTitleColor:_buttonTitleColors[@(UIControlStateNormal)]
-                 forState:UIControlStateNormal];
-    [button setTitleColor:_buttonTitleColors[@(UIControlStateHighlighted)]
-                 forState:UIControlStateHighlighted];
+  if (!message.action) {
+    return;
+  }
+
+  UIButton *button;
+  if (_usesGM3Shapes) {
+    M3CButton *actionButton = [[M3CButton alloc] init];
+    [actionButton setTitleColor:_buttonTitleColors[@(UIControlStateNormal)]
+                       forState:UIControlStateNormal];
+    [actionButton setTitleColor:_buttonTitleColors[@(UIControlStateHighlighted)]
+                       forState:UIControlStateHighlighted];
+    actionButton.translatesAutoresizingMaskIntoConstraints = NO;
+    button = actionButton;
+  } else {
+    MDCButton *actionButton = [[MDCSnackbarMessageViewButton alloc] init];
+    [actionButton setTitleColor:_buttonTitleColors[@(UIControlStateNormal)]
+                       forState:UIControlStateNormal];
+    [actionButton setTitleColor:_buttonTitleColors[@(UIControlStateHighlighted)]
+                       forState:UIControlStateHighlighted];
 
     // TODO: Eventually remove this if statement, buttonTextColor is deprecated.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if (message.buttonTextColor) {
-      [button setTitleColor:message.buttonTextColor forState:UIControlStateNormal];
+      [actionButton setTitleColor:message.buttonTextColor forState:UIControlStateNormal];
     }
 #pragma clang diagnostic pop
 
-    button.enableRippleBehavior = message.enableRippleBehavior;
-    [_buttonContainer addSubview:button];
-
-    // Set up the button's accessibility values.
-    button.accessibilityIdentifier = message.action.accessibilityIdentifier;
-    button.accessibilityHint = message.action.accessibilityHint;
-
-    [button setTitle:message.action.title forState:UIControlStateNormal];
-    [button setTitle:message.action.title forState:UIControlStateHighlighted];
-
-    [button addTarget:self
-                  action:@selector(handleButtonTapped:)
-        forControlEvents:UIControlEventTouchUpInside];
-
-    button.uppercaseTitle = manager.uppercaseButtonTitle;
-    button.disabledAlpha = manager.disabledButtonAlpha;
-    button.titleLabel.adjustsFontForContentSizeCategory = !MDCSnackbarMessage.usesLegacySnackbar;
-    button.titleLabel.adjustsFontSizeToFitWidth = !MDCSnackbarMessage.usesLegacySnackbar;
+    actionButton.enableRippleBehavior = message.enableRippleBehavior;
+    actionButton.uppercaseTitle = manager.uppercaseButtonTitle;
+    actionButton.disabledAlpha = manager.disabledButtonAlpha;
     if (manager.buttonInkColor) {
-      button.inkColor = manager.buttonInkColor;
+      actionButton.inkColor = manager.buttonInkColor;
     }
-
-    self.actionButton = button;
-    [self updateButtonFont];
+    button = actionButton;
   }
+
+  [_buttonContainer addSubview:button];
+
+  // Set up the button's accessibility values.
+  button.accessibilityIdentifier = message.action.accessibilityIdentifier;
+  button.accessibilityHint = message.action.accessibilityHint;
+
+  [button setTitle:message.action.title forState:UIControlStateNormal];
+  [button setTitle:message.action.title forState:UIControlStateHighlighted];
+
+  [button addTarget:self
+                action:@selector(handleButtonTapped:)
+      forControlEvents:UIControlEventTouchUpInside];
+
+  BOOL adjustsFont = _usesGM3Shapes || !MDCSnackbarMessage.usesLegacySnackbar;
+  button.titleLabel.adjustsFontForContentSizeCategory = adjustsFont;
+  button.titleLabel.adjustsFontSizeToFitWidth = adjustsFont;
+
+  self.actionButton = button;
+  [self updateButtonFont];
 }
 
 - (void)dismissWithAction:(MDCSnackbarMessageAction *)action userInitiated:(BOOL)userInitiated {
@@ -508,14 +590,12 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
       accessibilityHintKey, kMaterialSnackbarStringsTableName, [[self class] bundle],
       @"Dismissal accessibility hint for Snackbar");
   if (enableDismissalAccessibilityAffordance) {
-    _label.accessibilityTraits = UIAccessibilityTraitButton;
-    if (![_label.accessibilityHint length]) {
-      _label.accessibilityHint = accessibilityHint;
-    }
-  } else {
-    _label.accessibilityTraits = UIAccessibilityTraitNone;
     if ([_label.accessibilityHint isEqualToString:accessibilityHint]) {
       _label.accessibilityHint = nil;
+    }
+  } else {
+    if (![_label.accessibilityHint length]) {
+      _label.accessibilityHint = accessibilityHint;
     }
   }
 }
@@ -669,18 +749,30 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
     }
   }
 
-  [self.actionButton setTitleFont:finalButtonFont forState:UIControlStateNormal];
-  [self.actionButton setTitleFont:finalButtonFont forState:UIControlStateHighlighted];
+  if ([self.actionButton isKindOfClass:[MDCButton class]]) {
+    MDCButton *button = (MDCButton *)self.actionButton;
+    [button setTitleFont:finalButtonFont forState:UIControlStateNormal];
+    [button setTitleFont:finalButtonFont forState:UIControlStateHighlighted];
+  } else {
+    self.actionButton.titleLabel.font = finalButtonFont;
+  }
 
+  [self setNeedsLayout];
+}
+
+- (CGFloat)cornerRadius {
+  return _cornerRadius;
+}
+
+- (void)setCornerRadius:(CGFloat)cornerRadius {
+  _cornerRadius = cornerRadius;
+  self.layer.cornerRadius = _cornerRadius;
+  _containerView.layer.cornerRadius = _cornerRadius;
   [self setNeedsLayout];
 }
 
 - (BOOL)shouldWaitForDismissalDuringVoiceover {
   return self.message.action != nil;
-}
-
-- (NSArray<MDCButton *> *)actionButtons {
-  return self.actionButton ? @[ self.actionButton ] : @[];
 }
 
 #pragma mark - Constraints and layout
@@ -729,12 +821,18 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
 
 - (void)updatePreferredMaxLayoutWidth {
   if (!MDCSnackbarMessage.usesLegacySnackbar) {
+    UIEdgeInsets safeContentMargin = self.safeContentMargin;
     CGFloat availableWidth =
-        self.bounds.size.width - self.safeContentMargin.left - self.safeContentMargin.right;
+        self.bounds.size.width - safeContentMargin.left - safeContentMargin.right;
     BOOL shouldUseHorizontalLayout = ![self shouldUseVerticalLayout];
     // Account for the action button if present and the layout is horizontal.
     if (shouldUseHorizontalLayout && self.actionButton) {
       availableWidth = availableWidth - [self actionButtonWidth] - kTitleButtonPadding;
+    } else if (_usesGM3Shapes) {
+      // If the text spans the width of the snackbar (either because it's using vertical layout or
+      // because there's no action), the left and right margins should match, so we'll replace the
+      // `right` margin with the `left` margin.
+      availableWidth = availableWidth + safeContentMargin.right - safeContentMargin.left;
     }
     self.label.preferredMaxLayoutWidth = availableWidth;
   }
@@ -784,6 +882,10 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
 - (NSArray *)containerViewConstraints {
   UIEdgeInsets safeContentMargin = self.safeContentMargin;
   CGFloat contentSafeBottomInset = kBorderWidth + self.contentSafeBottomInset;
+  // In GM3, we want the text's leading/trailing padding to be equal if it spans the full width of
+  // the snackbar, so we're using the `left` margin here, instead of the `right` margin.
+  CGFloat fullWidthTextTrailingMargin =
+      _usesGM3Shapes ? safeContentMargin.left : safeContentMargin.right;
   BOOL hasButtons = self.actionButton != nil;
 
   NSMutableArray *constraints = [NSMutableArray array];
@@ -843,7 +945,7 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
 
           // Pin the trailing edge of the contentView to its superview.
           [self.contentView.trailingAnchor constraintEqualToAnchor:self.containerView.trailingAnchor
-                                                          constant:-self.safeContentMargin.right],
+                                                          constant:-fullWidthTextTrailingMargin],
 
           // Make the leading edge of the button container less than the size of the view.
           [self.buttonContainer.leadingAnchor
@@ -881,7 +983,7 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
         ]];
       }
 
-      // The below constraint is shared by both vertical and horizontal layouts.
+      // The below constraints are shared by both vertical and horizontal layouts.
       [constraints addObjectsFromArray:@[
         // Pin the button container to the trailing edge of the container view.
         [self.buttonContainer.trailingAnchor
@@ -889,6 +991,18 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
                            constant:-self.safeContentMargin.right],
 
       ]];
+      if (_usesGM3Shapes) {
+        [constraints addObjectsFromArray:@[
+          [self.buttonGutterTapTarget.leadingAnchor
+              constraintEqualToAnchor:self.buttonContainer.leadingAnchor],
+          [self.buttonGutterTapTarget.trailingAnchor
+              constraintEqualToAnchor:self.containerView.trailingAnchor],
+          [self.buttonGutterTapTarget.topAnchor
+              constraintEqualToAnchor:self.buttonContainer.topAnchor],
+          [self.buttonGutterTapTarget.bottomAnchor
+              constraintEqualToAnchor:self.containerView.bottomAnchor],
+        ]];
+      }
     }
   } else {  // There is not an action button present.
     [constraints addObjectsFromArray:@[
@@ -897,7 +1011,7 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
       [self.contentView.bottomAnchor constraintEqualToAnchor:self.containerView.bottomAnchor
                                                     constant:-self.safeContentMargin.bottom],
       [self.contentView.trailingAnchor constraintEqualToAnchor:self.containerView.trailingAnchor
-                                                      constant:-self.safeContentMargin.right]
+                                                      constant:-fullWidthTextTrailingMargin]
     ]];
   }
 
@@ -977,10 +1091,8 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
   }
 
   // As our layout changes, make sure that the shadow path is kept up-to-date.
-  UIBezierPath *path = [UIBezierPath
-      bezierPathWithRoundedRect:self.bounds
-                   cornerRadius:MDCSnackbarMessage.usesLegacySnackbar ? kLegacyCornerRadius
-                                                                      : kCornerRadius];
+  UIBezierPath *path = [UIBezierPath bezierPathWithRoundedRect:self.bounds
+                                                  cornerRadius:_cornerRadius];
   self.layer.shadowPath = path.CGPath;
   self.layer.shadowColor = self.snackbarMessageViewShadowColor.CGColor;
   [self invalidateIntrinsicContentSize];
@@ -1000,8 +1112,10 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
   height += self.safeContentMargin.top + self.safeContentMargin.bottom;
 
   // Make sure that the height of the text is larger than the minimum height;
-  height = MAX(_isMultilineText ? kMinimumHeightMultiline : kMinimumHeight, height) +
-           self.contentSafeBottomInset;
+  CGFloat minimumHeight = _isMultilineText ? kMinimumHeightMultiline
+                          : _usesGM3Shapes ? kMinimumHeightGM3
+                                           : kMinimumHeight;
+  height = MAX(minimumHeight, height) + self.contentSafeBottomInset;
 
   if ([self shouldUseVerticalLayout]) {
     height += self.actionButton.intrinsicContentSize.height + kTitleButtonPadding;
@@ -1018,28 +1132,15 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
     return 0;
   }
   return self.window.safeAreaInsets.bottom;
-  return 0;
 }
 
 - (UIEdgeInsets)safeContentMargin {
-  UIEdgeInsets contentMargin = UIEdgeInsetsZero;
   if (MDCSnackbarMessage.usesLegacySnackbar) {
-    contentMargin = kLegacyContentMargin;
+    return kLegacyContentMargin;
   } else {
-    contentMargin = _isMultilineText || [self shouldUseVerticalLayout]
-                        ? kContentMarginMutliLineText
-                        : kContentMarginSingleLineText;
+    return _isMultilineText || [self shouldUseVerticalLayout] ? kContentMarginMutliLineText
+                                                              : kContentMarginSingleLineText;
   }
-
-  UIEdgeInsets safeAreaInsets = UIEdgeInsetsZero;
-  safeAreaInsets = self.window.safeAreaInsets;
-
-  // We only take the left and right safeAreaInsets in to account because the bottom is
-  // handled by contentSafeBottomInset and we will never overlap the top inset.
-  contentMargin.left = MAX(contentMargin.left, safeAreaInsets.left);
-  contentMargin.right = MAX(contentMargin.right, safeAreaInsets.right);
-
-  return contentMargin;
 }
 
 #pragma mark - Event Handlers
@@ -1050,7 +1151,7 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
   translationAnimation.toValue = [NSNumber numberWithDouble:-self.frame.size.width];
   translationAnimation.duration = MDCSnackbarLegacyTransitionDuration;
   translationAnimation.timingFunction =
-      [CAMediaTimingFunction mdc_functionWithType:MDCAnimationTimingFunctionTranslateOffScreen];
+      [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn];
   translationAnimation.delegate = self;
   translationAnimation.fillMode = kCAFillModeForwards;
   translationAnimation.removedOnCompletion = NO;
@@ -1063,11 +1164,21 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
   translationAnimation.toValue = [NSNumber numberWithDouble:self.frame.size.width];
   translationAnimation.duration = MDCSnackbarLegacyTransitionDuration;
   translationAnimation.timingFunction =
-      [CAMediaTimingFunction mdc_functionWithType:MDCAnimationTimingFunctionTranslateOffScreen];
+      [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn];
   translationAnimation.delegate = self;
   translationAnimation.fillMode = kCAFillModeForwards;
   translationAnimation.removedOnCompletion = NO;
   [self.layer addAnimation:translationAnimation forKey:@"transform.translation.x"];
+}
+
+- (void)highlightBackground {
+  if (_snackbarMessageViewHighlightColor) {
+    self.backgroundColor = _snackbarMessageViewHighlightColor;
+  }
+}
+
+- (void)unhighlightBackground {
+  self.backgroundColor = _snackbarMessageViewBackgroundColor;
 }
 
 - (void)handleBackgroundTapped:(__unused UIButton *)sender {
@@ -1123,6 +1234,20 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
   }
 }
 
+#pragma mark - MDCHighlightableScrollViewDelegate
+
+- (void)scrollViewTouchBegan:(UIScrollView *)scrollView {
+  [self highlightBackground];
+}
+
+- (void)scrollViewTouchEnded:(UIScrollView *)scrollView {
+  [self unhighlightBackground];
+}
+
+- (void)scrollViewTouchCancelled:(UIScrollView *)scrollView {
+  [self unhighlightBackground];
+}
+
 #pragma mark - Accessibility
 
 // Override regular accessibility element ordering and ensure label
@@ -1135,7 +1260,7 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
 - (id)accessibilityElementAtIndex:(NSInteger)index {
   if (index == 0) {
     return _label;
-  } else if (index == 1) {
+  } else if (index == 1 && self.actionButton) {
     return self.actionButton;
   }
   if (!self.dismissalAccessibilityAffordance.accessibilityElementsHidden) {
@@ -1151,7 +1276,7 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
     return 1;
   } else if (element == _dismissalAccessibilityAffordance &&
              !self.dismissalAccessibilityAffordance.accessibilityElementsHidden) {
-    return 2;
+    return _actionButton ? 2 : 1;
   }
 
   return NSNotFound;
@@ -1214,11 +1339,16 @@ static const CGFloat kMinimumAccessibiltyFontSize = 21;
 }
 
 - (BOOL)shouldUseVerticalLayout {
-  return !MDCSnackbarMessage.usesLegacySnackbar &&
-         UIContentSizeCategoryIsAccessibilityCategory(
-             self.traitCollection.preferredContentSizeCategory) &&
-         self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassRegular &&
-         self.label.font.pointSize > kMinimumAccessibiltyFontSize;
+  if (MDCSnackbarMessage.usesLegacySnackbar) {
+    return false;
+  }
+  BOOL actionIsLong = self.actionButton != nil &&
+                      self.actionButton.intrinsicContentSize.width > self.maximumWidth * 0.4;
+  BOOL textIsLarge = UIContentSizeCategoryIsAccessibilityCategory(
+                         self.traitCollection.preferredContentSizeCategory) &&
+                     self.traitCollection.verticalSizeClass == UIUserInterfaceSizeClassRegular &&
+                     self.label.font.pointSize > kMinimumAccessibiltyFontSize;
+  return actionIsLong || textIsLarge;
 }
 
 #pragma mark - Elevation

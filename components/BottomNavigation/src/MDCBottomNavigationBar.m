@@ -15,7 +15,6 @@
 #import <Foundation/Foundation.h>
 
 #import "MDCBottomNavigationBar.h"
-
 #import "MDCAvailability.h"
 #import "UIView+MaterialElevationResponding.h"
 
@@ -36,6 +35,8 @@
 #import "UIFont+MaterialTypography.h"
 #import "MDCMath.h"
 
+NS_ASSUME_NONNULL_BEGIN
+
 // KVO context
 static char *const kKVOContextMDCBottomNavigationBar = "kKVOContextMDCBottomNavigationBar";
 
@@ -52,18 +53,29 @@ static const CGFloat kBadgeFontSize = 8;
 static const CGFloat kDefaultActiveIndicatorHeight = 30;
 static const CGFloat kDefaultActiveIndicatorWidth = 60;
 
+// Vertical layout
+static const CGFloat kDefaultVerticalLayoutWidth = 80;
+static const CGFloat kDefaultVerticalPadding = 45;
+static const CGFloat kDefaultItemSpacingInVerticalLayoutOniPad = 15;
+static const CGFloat kDefaultItemSpacingInVerticalLayout = 8;
+
 @interface MDCBottomNavigationBar () <MDCRippleTouchControllerDelegate>
 
-@property(nonatomic, assign) BOOL itemsDistributed;
-@property(nonatomic, assign) CGFloat maxLandscapeClusterContainerWidth;
 @property(nonatomic, strong) NSMutableArray<MDCBottomNavigationItemView *> *itemViews;
 @property(nonatomic, readonly) UIEdgeInsets mdc_safeAreaInsets;
 @property(nonatomic, strong) UIView *barView;
-@property(nonatomic, assign) CGRect itemLayoutFrame;
 @property(nonatomic, strong) UIVisualEffectView *blurEffectView;
-@property(nonatomic, strong) UIView *itemsLayoutView;
+@property(nonatomic, strong) UIStackView *itemsLayoutView;
 @property(nonatomic, strong) UILayoutGuide *barItemsLayoutGuide NS_AVAILABLE_IOS(9_0);
-
+@property(nonatomic, strong) NSLayoutConstraint *itemsLayoutViewAlignmentConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *itemsLayoutViewHeightConstraint;
+@property(nonatomic, strong) NSLayoutConstraint *itemsLayoutViewBottomAnchorConstraint;
+@property(nonatomic, strong) NSMutableArray<NSLayoutConstraint *> *itemViewHeightConstraints;
+@property(nonatomic, strong) NSMutableArray<NSLayoutConstraint *> *itemViewWidthConstraints;
+@property(nonatomic, strong)
+    NSMutableArray<NSLayoutConstraint *> *itemsLayoutViewHorizontalConstraints;
+@property(nonatomic, strong)
+    NSMutableArray<NSLayoutConstraint *> *itemsLayoutViewVerticalConstraints;
 
 #if MDC_AVAILABLE_SDK_IOS(13_0)
 /**
@@ -96,7 +108,7 @@ static BOOL gEnablePerformantShadow = NO;
   return self;
 }
 
-- (instancetype)initWithCoder:(NSCoder *)aDecoder {
+- (nullable instancetype)initWithCoder:(NSCoder *)aDecoder {
   self = [super initWithCoder:aDecoder];
   if (self) {
     [self commonMDCBottomNavigationBarInit];
@@ -106,25 +118,23 @@ static BOOL gEnablePerformantShadow = NO;
 
 - (void)commonMDCBottomNavigationBarInit {
   _itemsContentHorizontalMargin = kItemsHorizontalMargin;
-  _selectedItemTintColor = [UIColor blackColor];
-  _unselectedItemTintColor = [UIColor grayColor];
+  _selectedItemTintColor = UIColor.blackColor;
+  _unselectedItemTintColor = UIColor.grayColor;
   _selectedItemTitleColor = _selectedItemTintColor;
   _titleVisibility = MDCBottomNavigationBarTitleVisibilitySelected;
   _alignment = MDCBottomNavigationBarAlignmentJustified;
-  _itemsDistributed = YES;
-  _barTintColor = [UIColor whiteColor];
+  _barTintColor = UIColor.whiteColor;
   _truncatesLongTitles = YES;
   _titlesNumberOfLines = 1;
   _mdc_overrideBaseElevation = -1;
   _rippleEnabled = YES;
-
+  _itemsAlignmentInVerticalMode = MDCNavigationBarItemsVerticalAlignmentCenter;
   _itemBadgeAppearance = [[MDCBadgeAppearance alloc] init];
 
   // TODO(featherless): Delete once everyone has migrated to itemBadgeAppearance.
   _itemBadgeTextColor = UIColor.whiteColor;
   _itemBadgeTextFont = [UIFont systemFontOfSize:kBadgeFontSize];
   _itemBadgeBackgroundColor = MDCPalette.redPalette.tint700;
-
   _itemsHorizontalPadding = kDefaultItemHorizontalPadding;
   _showsSelectionIndicator = NO;
   _selectionIndicatorColor = [UIColor colorWithRed:195.f / 255.f
@@ -142,18 +152,16 @@ static BOOL gEnablePerformantShadow = NO;
   }
 
   _barView = [[UIView alloc] init];
-  _barView.autoresizingMask =
-      (UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin);
   _barView.clipsToBounds = YES;
   _barView.backgroundColor = _barTintColor;
   [self addSubview:_barView];
 
-  _itemsLayoutView = [[UIView alloc] initWithFrame:CGRectZero];
-  // By default, the autoresizing mask pins the itemsLayoutView to the top and bottom of the bar.
-  // However, if the `barItemsLayoutGuide` has a constraint moving the position of the view, those
-  // can override the autoresizing mask.
-  _itemsLayoutView.autoresizingMask =
-      (UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleRightMargin);
+  _itemsLayoutView = [[UIStackView alloc] initWithFrame:CGRectZero];
+  _itemsLayoutView.layoutMarginsRelativeArrangement = YES;
+  _itemsLayoutView.spacing = kDefaultItemHorizontalPadding;
+  _itemsLayoutView.alignment = UIStackViewAlignmentCenter;
+  _itemsLayoutView.distribution = UIStackViewDistributionFillEqually;
+  _itemsLayoutView.translatesAutoresizingMaskIntoConstraints = NO;
   _itemsLayoutView.clipsToBounds = NO;
   [_barView addSubview:_itemsLayoutView];
 
@@ -161,18 +169,47 @@ static BOOL gEnablePerformantShadow = NO;
   self.elevation = MDCShadowElevationBottomNavigationBar;
   self.shadowColor = gEnablePerformantShadow ? MDCShadowColor() : UIColor.blackColor;
   _itemViews = [NSMutableArray array];
+  _itemViewHeightConstraints = [NSMutableArray array];
+  _itemViewWidthConstraints = [NSMutableArray array];
+  _itemsLayoutViewHorizontalConstraints = [NSMutableArray array];
+  _itemsLayoutViewVerticalConstraints = [NSMutableArray array];
   _itemTitleFont = [UIFont mdc_standardFontForMaterialTextStyle:MDCFontTextStyleCaption];
 
+  // Horizontal layout constraints.
+  [_itemsLayoutViewHorizontalConstraints
+      addObject:[_itemsLayoutView.leadingAnchor constraintEqualToAnchor:_barView.leadingAnchor]];
+  [_itemsLayoutViewHorizontalConstraints
+      addObject:[_itemsLayoutView.trailingAnchor constraintEqualToAnchor:_barView.trailingAnchor]];
+  [_itemsLayoutViewHorizontalConstraints
+      addObject:[_itemsLayoutView.topAnchor constraintEqualToAnchor:_barView.topAnchor]];
+  _itemsLayoutViewHeightConstraint =
+      [_itemsLayoutView.heightAnchor constraintEqualToConstant:[self calculateBarHeight]];
+  [_itemsLayoutViewHorizontalConstraints addObject:_itemsLayoutViewHeightConstraint];
+
+  // Vertical layout constraints.
+  [_itemsLayoutViewVerticalConstraints
+      addObject:[_itemsLayoutView.widthAnchor
+                    constraintEqualToConstant:kDefaultVerticalLayoutWidth]];
+  [_itemsLayoutViewVerticalConstraints
+      addObject:[_itemsLayoutView.leadingAnchor
+                    constraintEqualToAnchor:_barView.safeAreaLayoutGuide.leadingAnchor]];
+  _itemsLayoutViewAlignmentConstraint =
+      [_itemsLayoutView.centerYAnchor constraintEqualToAnchor:_barView.centerYAnchor];
+
+  // Layout guide to control items stack view's bottom anchor.
   _barItemsLayoutGuide = [[UILayoutGuide alloc] init];
   _barItemsLayoutGuide.identifier = @"MDCBottomNavigationBarItemsLayoutGuide";
   [_itemsLayoutView addLayoutGuide:_barItemsLayoutGuide];
-  [_barItemsLayoutGuide.bottomAnchor constraintEqualToAnchor:_itemsLayoutView.bottomAnchor].active =
-      YES;
-  [_barItemsLayoutGuide.topAnchor constraintEqualToAnchor:_itemsLayoutView.topAnchor].active = YES;
-  [_barItemsLayoutGuide.leadingAnchor constraintEqualToAnchor:_itemsLayoutView.leadingAnchor]
-      .active = YES;
-  [_barItemsLayoutGuide.trailingAnchor constraintEqualToAnchor:_itemsLayoutView.trailingAnchor]
-      .active = YES;
+  _itemsLayoutViewBottomAnchorConstraint =
+      [_barItemsLayoutGuide.bottomAnchor constraintEqualToAnchor:_itemsLayoutView.bottomAnchor];
+
+  _enableVerticalLayout = NO;
+  _displayItemTitlesInVerticalLayout = NO;
+  [self loadConstraints];
+}
+
+- (CGFloat)barWidthForVerticalLayout {
+  return kDefaultVerticalLayoutWidth;
 }
 
 - (void)layoutSubviews {
@@ -182,16 +219,22 @@ static BOOL gEnablePerformantShadow = NO;
   if (self.blurEffectView) {
     self.blurEffectView.frame = standardBounds;
   }
+
   self.barView.frame = standardBounds;
+
   self.layer.shadowColor = self.shadowColor.CGColor;
 
-  CGSize size = standardBounds.size;
-  if (self.traitCollection.horizontalSizeClass == UIUserInterfaceSizeClassRegular) {
-    [self layoutLandscapeModeWithBottomNavSize:size containerWidth:size.width];
-  } else {
-    [self sizeItemsLayoutViewItemsDistributed:YES withBottomNavSize:size containerWidth:size.width];
+  for (NSUInteger i = 0; i < self.itemViews.count; i++) {
+    MDCBottomNavigationItemView *itemView = self.itemViews[i];
+    [self configureTitleStateForItemView:itemView];
   }
-  [self layoutItemViews];
+
+  UIUserInterfaceLayoutDirection layoutDirection = self.effectiveUserInterfaceLayoutDirection;
+  if (layoutDirection == UIUserInterfaceLayoutDirectionLeftToRight) {
+    _itemsLayoutView.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
+  } else {
+    _itemsLayoutView.semanticContentAttribute = UISemanticContentAttributeForceRightToLeft;
+  }
 
   if (gEnablePerformantShadow) {
     [self updateShadow];
@@ -204,10 +247,33 @@ static BOOL gEnablePerformantShadow = NO;
 }
 
 - (CGSize)intrinsicContentSize {
-  CGFloat height = [self calculateBarHeight];
-  CGFloat itemWidth = [self widthForItemsWhenCenteredWithAvailableWidth:CGFLOAT_MAX height:height];
-  CGSize size = CGSizeMake(itemWidth * self.items.count, height);
-  return size;
+  if (self.enableVerticalLayout) {
+    return CGSizeMake([self barWidthForVerticalLayout], UIViewNoIntrinsicMetric);
+  } else {
+    CGFloat height = [self calculateBarHeight];
+    CGFloat itemWidth = [self widthForItemsWhenCenteredWithAvailableWidth:CGFLOAT_MAX
+                                                                   height:height];
+    return CGSizeMake(itemWidth * self.items.count, height);
+  }
+}
+
+- (CGFloat)widthForItemsWhenCenteredWithAvailableWidth:(CGFloat)availableWidth
+                                                height:(CGFloat)barHeight {
+  CGFloat maxItemWidth = kPreferredItemWidth;
+  for (UIView *itemView in self.itemViews) {
+    maxItemWidth =
+        MAX(maxItemWidth, [itemView sizeThatFits:CGSizeMake(availableWidth, barHeight)].width +
+                              self.itemsHorizontalPadding * 2);
+  }
+  maxItemWidth = MIN(kMaxItemWidth, maxItemWidth);
+  CGFloat totalWidth = maxItemWidth * self.items.count;
+  if (totalWidth > availableWidth) {
+    maxItemWidth = availableWidth / self.items.count;
+  }
+  if (maxItemWidth < kMinItemWidth) {
+    maxItemWidth = kMinItemWidth;
+  }
+  return maxItemWidth;
 }
 
 - (NSLayoutYAxisAnchor *)barItemsBottomAnchor {
@@ -216,6 +282,7 @@ static BOOL gEnablePerformantShadow = NO;
 
 - (CGSize)sizeThatFits:(CGSize)size {
   CGFloat height;
+  CGFloat width = size.width;
   if ([self shouldUseAnchoredLayout]) {
     height = [self calculateBarHeight];
   } else {
@@ -230,7 +297,11 @@ static BOOL gEnablePerformantShadow = NO;
     }
   }
 
-  return CGSizeMake(size.width, height);
+  if (self.enableVerticalLayout) {
+    width = kDefaultVerticalLayoutWidth;
+  }
+
+  return CGSizeMake(width, height);
 }
 
 + (Class)layerClass {
@@ -273,16 +344,24 @@ static BOOL gEnablePerformantShadow = NO;
 
 - (BOOL)isTitleBelowIcon {
   switch (self.alignment) {
+    case MDCBottomNavigationBarAlignmentCentered:
     case MDCBottomNavigationBarAlignmentJustified:
       return YES;
       break;
     case MDCBottomNavigationBarAlignmentJustifiedAdjacentTitles:
       return self.traitCollection.horizontalSizeClass != UIUserInterfaceSizeClassRegular;
       break;
-    case MDCBottomNavigationBarAlignmentCentered:
-      return YES;
-      break;
   }
+}
+
+- (void)setBarHeight:(CGFloat)barHeight {
+  _barHeight = barHeight;
+  _itemsLayoutViewHeightConstraint.constant = [self calculateBarHeight];
+}
+
+- (void)setBarHeightWithoutTitles:(CGFloat)barHeightWithoutTitles {
+  _barHeightWithoutTitles = barHeightWithoutTitles;
+  _itemsLayoutViewHeightConstraint.constant = [self calculateBarHeight];
 }
 
 - (CGFloat)calculateBarHeight {
@@ -304,98 +383,89 @@ static BOOL gEnablePerformantShadow = NO;
   return height;
 }
 
-- (void)layoutLandscapeModeWithBottomNavSize:(CGSize)bottomNavSize
-                              containerWidth:(CGFloat)containerWidth {
-  switch (self.alignment) {
-    case MDCBottomNavigationBarAlignmentJustified:
-      [self sizeItemsLayoutViewItemsDistributed:YES
-                              withBottomNavSize:bottomNavSize
-                                 containerWidth:containerWidth];
-      break;
-    case MDCBottomNavigationBarAlignmentJustifiedAdjacentTitles:
-      [self sizeItemsLayoutViewItemsDistributed:YES
-                              withBottomNavSize:bottomNavSize
-                                 containerWidth:containerWidth];
-      break;
-    case MDCBottomNavigationBarAlignmentCentered:
-      [self sizeItemsLayoutViewItemsDistributed:NO
-                              withBottomNavSize:bottomNavSize
-                                 containerWidth:containerWidth];
-      break;
-  }
-}
-
-- (CGFloat)widthForItemsWhenCenteredWithAvailableWidth:(CGFloat)availableWidth
-                                                height:(CGFloat)barHeight {
-  CGFloat maxItemWidth = kPreferredItemWidth;
-  for (UIView *itemView in self.itemViews) {
-    maxItemWidth =
-        MAX(maxItemWidth, [itemView sizeThatFits:CGSizeMake(availableWidth, barHeight)].width +
-                              self.itemsHorizontalPadding * 2);
-  }
-  maxItemWidth = MIN(kMaxItemWidth, maxItemWidth);
-  CGFloat totalWidth = maxItemWidth * self.items.count;
-  if (totalWidth > availableWidth) {
-    maxItemWidth = availableWidth / self.items.count;
-  }
-  if (maxItemWidth < kMinItemWidth) {
-    maxItemWidth = kMinItemWidth;
-  }
-  return maxItemWidth;
-}
-
-- (void)sizeItemsLayoutViewItemsDistributed:(BOOL)itemsDistributed
-                          withBottomNavSize:(CGSize)bottomNavSize
-                             containerWidth:(CGFloat)containerWidth {
-  CGFloat barHeight = [self calculateBarHeight];
-  UIEdgeInsets insets = self.mdc_safeAreaInsets;
-  CGFloat bottomNavWidthInset = bottomNavSize.width - insets.left - insets.right;
-  if (itemsDistributed) {
-    self.itemsLayoutView.frame = CGRectMake(insets.left, 0, bottomNavWidthInset, barHeight);
-    self.itemLayoutFrame = CGRectMake(0, 0, CGRectGetWidth(self.itemsLayoutView.frame), barHeight);
-  } else {
-    CGFloat maxItemWidth = [self widthForItemsWhenCenteredWithAvailableWidth:bottomNavWidthInset
-                                                                      height:barHeight];
-    CGFloat layoutFrameWidth = maxItemWidth * self.items.count;
-    layoutFrameWidth = MIN(bottomNavWidthInset, layoutFrameWidth);
-    containerWidth = MIN(bottomNavWidthInset, MAX(containerWidth, layoutFrameWidth));
-    CGFloat clusteredOffsetX = floor((bottomNavSize.width - containerWidth) / 2);
-    self.itemsLayoutView.frame = CGRectMake(clusteredOffsetX, 0, containerWidth, barHeight);
-    CGFloat itemLayoutFrameOffsetX = floor((containerWidth - layoutFrameWidth) / 2);
-    self.itemLayoutFrame = CGRectMake(itemLayoutFrameOffsetX, 0, layoutFrameWidth, barHeight);
-  }
-}
-
-- (void)layoutItemViews {
-  UIUserInterfaceLayoutDirection layoutDirection = self.effectiveUserInterfaceLayoutDirection;
-  NSInteger numItems = self.items.count;
-  if (numItems == 0) {
+- (void)setEnableVerticalLayout:(BOOL)enableVerticalLayout {
+  if (_enableVerticalLayout == enableVerticalLayout) {
     return;
   }
+  _enableVerticalLayout = enableVerticalLayout;
+  for (MDCBottomNavigationItemView *item in self.itemViews) {
+    item.enableVerticalLayout = enableVerticalLayout;
+  }
+  [self loadConstraints];
+  [self invalidateIntrinsicContentSize];
+}
 
-  CGFloat navBarHeight;
+- (void)setDisplayItemTitlesInVerticalLayout:(BOOL)displayItemTitlesInVerticalLayout {
+  if (_displayItemTitlesInVerticalLayout == displayItemTitlesInVerticalLayout) {
+    return;
+  }
+  _displayItemTitlesInVerticalLayout = displayItemTitlesInVerticalLayout;
+  for (MDCBottomNavigationItemView *item in self.itemViews) {
+    item.displayTitleInVerticalLayout = _displayItemTitlesInVerticalLayout;
+  }
+}
 
-  if ([self shouldUseAnchoredLayout]) {
-    navBarHeight = [self calculateBarHeight];
+- (void)setItemsAlignmentInVerticalMode:
+    (MDCNavigationBarItemsVerticalAlignment)itemsAlignmentInVerticalMode {
+  _itemsAlignmentInVerticalMode = itemsAlignmentInVerticalMode;
+  _itemsLayoutViewAlignmentConstraint.active = NO;
+  switch (_itemsAlignmentInVerticalMode) {
+    case MDCNavigationBarItemsVerticalAlignmentCenter:
+      _itemsLayoutViewAlignmentConstraint =
+          [_itemsLayoutView.centerYAnchor constraintEqualToAnchor:_barView.centerYAnchor];
+      break;
+    case MDCNavigationBarItemsVerticalAlignmentTop:
+      _itemsLayoutViewAlignmentConstraint =
+          [_itemsLayoutView.topAnchor constraintEqualToAnchor:_barView.topAnchor
+                                                     constant:kDefaultVerticalPadding];
+      break;
+    case MDCNavigationBarItemsVerticalAlignmentBottom:
+      _itemsLayoutViewAlignmentConstraint =
+          [_itemsLayoutView.bottomAnchor constraintEqualToAnchor:_barView.bottomAnchor
+                                                        constant:-kDefaultVerticalPadding];
+      break;
+  }
+  [self loadConstraints];
+}
+
+- (void)loadConstraints {
+  if (self.enableVerticalLayout) {
+    [self activateVerticalLayoutConstraints];
   } else {
-    navBarHeight = CGRectGetHeight(self.itemsLayoutView.bounds);
+    [self activateHorizontalLayoutConstraints];
   }
+}
+- (void)activateVerticalLayoutConstraints {
+  _itemsLayoutViewBottomAnchorConstraint.active = NO;
+  [NSLayoutConstraint deactivateConstraints:self.itemsLayoutViewHorizontalConstraints];
+  for (NSLayoutConstraint *constraint in self.itemViewHeightConstraints) {
+    constraint.constant = kBarHeightStackedTitle;
+  }
+  _itemsLayoutViewAlignmentConstraint.active = YES;
+  self.itemsLayoutView.axis = UILayoutConstraintAxisVertical;
 
-  CGFloat itemWidth = CGRectGetWidth(self.itemLayoutFrame) / numItems;
-  for (NSUInteger i = 0; i < self.itemViews.count; i++) {
-    MDCBottomNavigationItemView *itemView = self.itemViews[i];
-    [self configureTitleStateForItemView:itemView];
-    if (layoutDirection == UIUserInterfaceLayoutDirectionLeftToRight) {
-      itemView.frame = CGRectMake(
-          floor(CGRectGetMinX(self.itemLayoutFrame) + i * itemWidth + self.itemsHorizontalPadding),
-          0, floor(itemWidth - 2 * self.itemsHorizontalPadding), navBarHeight);
-    } else {
-      itemView.frame =
-          CGRectMake(floor(CGRectGetMaxX(self.itemLayoutFrame) - (i + 1) * itemWidth +
-                           self.itemsHorizontalPadding),
-                     0, floor(itemWidth - 2 * self.itemsHorizontalPadding), navBarHeight);
-    }
+  if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPad) {
+    self.itemsLayoutView.spacing = kDefaultItemSpacingInVerticalLayoutOniPad;
+  } else if (self.displayItemTitlesInVerticalLayout) {
+    self.itemsLayoutView.spacing = kDefaultItemSpacingInVerticalLayout;
   }
+  [NSLayoutConstraint activateConstraints:self.itemViewWidthConstraints];
+  [NSLayoutConstraint activateConstraints:self.itemsLayoutViewVerticalConstraints];
+}
+
+- (void)activateHorizontalLayoutConstraints {
+  _itemsLayoutViewAlignmentConstraint.active = NO;
+  [NSLayoutConstraint deactivateConstraints:self.itemViewWidthConstraints];
+  [NSLayoutConstraint deactivateConstraints:self.itemsLayoutViewVerticalConstraints];
+  CGFloat barHeight = [self calculateBarHeight];
+  _itemsLayoutViewHeightConstraint.constant = barHeight;
+  self.itemsLayoutView.axis = UILayoutConstraintAxisHorizontal;
+  self.itemsLayoutView.spacing = kDefaultItemHorizontalPadding;
+  _itemsLayoutViewBottomAnchorConstraint.active = YES;
+  for (NSLayoutConstraint *constraint in self.itemViewHeightConstraints) {
+    constraint.constant = barHeight;
+  }
+  [NSLayoutConstraint activateConstraints:self.itemsLayoutViewHorizontalConstraints];
 }
 
 - (void)dealloc {
@@ -453,10 +523,10 @@ static BOOL gEnablePerformantShadow = NO;
   }
 }
 
-- (void)observeValueForKeyPath:(NSString *)keyPath
-                      ofObject:(id)object
-                        change:(NSDictionary<NSKeyValueChangeKey, id> *)change
-                       context:(void *)context {
+- (void)observeValueForKeyPath:(nullable NSString *)keyPath
+                      ofObject:(nullable id)object
+                        change:(nullable NSDictionary<NSKeyValueChangeKey, id> *)change
+                       context:(nullable void *)context {
   if (context == kKVOContextMDCBottomNavigationBar) {
     if (!object) {
       return;
@@ -494,20 +564,13 @@ static BOOL gEnablePerformantShadow = NO;
     } else if ([keyPath isEqualToString:NSStringFromSelector(@selector(titlePositionAdjustment))]) {
       itemView.titlePositionAdjustment = [newValue UIOffsetValue];
     } else if ([keyPath isEqualToString:NSStringFromSelector(@selector(largeContentSizeImage))]) {
-      if (@available(iOS 13.0, *)) {
-        itemView.largeContentImage = newValue;
-      }
+      itemView.largeContentImage = newValue;
     } else if ([keyPath isEqualToString:NSStringFromSelector(@selector(tag))]) {
       itemView.tag = [newValue integerValue];
+    } else if ([keyPath
+                   isEqualToString:NSStringFromSelector(@selector(largeContentSizeImageInsets))]) {
+      itemView.largeContentImageInsets = [newValue UIEdgeInsetsValue];
     }
-#if MDC_AVAILABLE_SDK_IOS(13_0)
-    else if ([keyPath
-                 isEqualToString:NSStringFromSelector(@selector(largeContentSizeImageInsets))]) {
-      if (@available(iOS 13.0, *)) {
-        itemView.largeContentImageInsets = [newValue UIEdgeInsetsValue];
-      }
-    }
-#endif  // MDC_AVAILABLE_SDK_IOS(13_0)
   } else {
     [super observeValueForKeyPath:keyPath ofObject:object change:change context:context];
   }
@@ -518,7 +581,7 @@ static BOOL gEnablePerformantShadow = NO;
   return self.safeAreaInsets;
 }
 
-- (UIView *)viewForItem:(UITabBarItem *)item {
+- (nullable UIView *)viewForItem:(UITabBarItem *)item {
   NSUInteger itemIndex = [_items indexOfObject:item];
   if (itemIndex == NSNotFound) {
     return nil;
@@ -530,7 +593,7 @@ static BOOL gEnablePerformantShadow = NO;
   return _itemViews[itemIndex];
 }
 
-- (UITabBarItem *)tabBarItemForPoint:(CGPoint)point {
+- (nullable UITabBarItem *)tabBarItemForPoint:(CGPoint)point {
   for (NSUInteger i = 0; (i < self.itemViews.count) && (i < self.items.count); i++) {
     UIView *itemView = self.itemViews[i];
     BOOL isPointInView = CGRectContainsPoint(itemView.frame, point);
@@ -554,7 +617,7 @@ static BOOL gEnablePerformantShadow = NO;
   return nil;
 }
 
-- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+- (void)traitCollectionDidChange:(nullable UITraitCollection *)previousTraitCollection {
   [super traitCollectionDidChange:previousTraitCollection];
 
   if (self.traitCollectionDidChangeBlock) {
@@ -589,23 +652,21 @@ static BOOL gEnablePerformantShadow = NO;
   if ([_items isEqual:items] || _items == items) {
     return;
   }
-
-#if MDC_AVAILABLE_SDK_IOS(13_0)
-  if (@available(iOS 13, *)) {
-    // If clients report conflicting gesture recognizers please see proposed solution in the
-    // internal document: go/mdc-ios-bottomnavigation-largecontentvieweritem
-    [self addInteraction:[[UILargeContentViewerInteraction alloc] initWithDelegate:self]];
-  }
-#endif  // MDC_AVAILABLE_SDK_IOS(13_0)
+  // If clients report conflicting gesture recognizers please see proposed solution in the
+  // internal document: go/mdc-ios-bottomnavigation-largecontentvieweritem
+  [self addInteraction:[[UILargeContentViewerInteraction alloc] initWithDelegate:self]];
 
   // Remove existing item views from the bottom navigation so it can be repopulated with new items.
   for (MDCBottomNavigationItemView *itemView in self.itemViews) {
     [itemView removeFromSuperview];
   }
   [self.itemViews removeAllObjects];
+  [self.itemViewHeightConstraints removeAllObjects];
+  [self.itemViewWidthConstraints removeAllObjects];
   [self removeObserversFromTabBarItems];
-
   _items = [items copy];
+
+  CGFloat barHeight = [self calculateBarHeight];
 
   for (NSUInteger i = 0; i < items.count; i++) {
     MDCBottomNavigationItemView *itemView =
@@ -613,7 +674,11 @@ static BOOL gEnablePerformantShadow = NO;
 
     itemView.rippleTouchController.delegate = self;
     itemView.selected = NO;
+    itemView.displayTitleInVerticalLayout = self.displayItemTitlesInVerticalLayout;
+    itemView.enableVerticalLayout = self.enableVerticalLayout;
 
+    itemView.selectionIndicatorColor = self.selectionIndicatorColor;
+    itemView.selectionIndicatorSize = self.selectionIndicatorSize;
     [self configureTitleStateForItemView:itemView];
     [self configureItemView:itemView withItem:items[i]];
 
@@ -622,16 +687,31 @@ static BOOL gEnablePerformantShadow = NO;
               forControlEvents:UIControlEventTouchUpInside];
 
     [self.itemViews addObject:itemView];
-    [self.itemsLayoutView addSubview:itemView];
+    [self.itemsLayoutView addArrangedSubview:itemView];
+    itemView.translatesAutoresizingMaskIntoConstraints = NO;
+    NSLayoutConstraint *itemViewHeightConstraint =
+        [itemView.heightAnchor constraintEqualToConstant:barHeight];
+    // This priority is set to low to avoid conflict of constraints due to the itemView's height
+    // being the same as the bar.
+    itemViewHeightConstraint.priority = UILayoutPriorityDefaultLow;
+    [self.itemViewHeightConstraints addObject:itemViewHeightConstraint];
+    NSLayoutConstraint *itemViewWidthConstraint =
+        [itemView.widthAnchor constraintEqualToConstant:kDefaultVerticalLayoutWidth];
+    // This priority is set to low to avoid conflict of constraints due to the itemView's width
+    // being the same as the bar.
+    itemViewWidthConstraint.priority = UILayoutPriorityDefaultLow;
+    [self.itemViewWidthConstraints addObject:itemViewWidthConstraint];
   }
 
   self.selectedItem = nil;
+  [NSLayoutConstraint activateConstraints:self.itemViewHeightConstraints];
+  [self loadConstraints];
   [self addObserversToTabBarItems];
   [self invalidateIntrinsicContentSize];
   [self setNeedsLayout];
 }
 
-- (void)setSelectedItem:(UITabBarItem *)selectedItem {
+- (void)setSelectedItem:(nullable UITabBarItem *)selectedItem {
   [self setSelectedItem:selectedItem animated:NO];
 }
 
@@ -742,16 +822,16 @@ static BOOL gEnablePerformantShadow = NO;
   [self setNeedsLayout];
 }
 
-- (void)setBarTintColor:(UIColor *)barTintColor {
+- (void)setBarTintColor:(nullable UIColor *)barTintColor {
   _barTintColor = barTintColor;
   self.barView.backgroundColor = barTintColor;
 }
 
-- (void)setBackgroundColor:(UIColor *)backgroundColor {
+- (void)setBackgroundColor:(nullable UIColor *)backgroundColor {
   self.barView.backgroundColor = backgroundColor;
 }
 
-- (UIColor *)backgroundColor {
+- (nullable UIColor *)backgroundColor {
   return self.barView.backgroundColor;
 }
 
@@ -794,6 +874,7 @@ static BOOL gEnablePerformantShadow = NO;
   }
   [self invalidateIntrinsicContentSize];
   [self setNeedsLayout];
+  _itemsLayoutViewHeightConstraint.constant = [self calculateBarHeight];
 }
 
 - (void)setShowsSelectionIndicator:(BOOL)showsSelectionIndicator {
@@ -842,7 +923,7 @@ static BOOL gEnablePerformantShadow = NO;
   return _shadowsCollection;
 }
 
-- (void)setShadowsCollection:(MDCShadowsCollection *)shadowsCollection {
+- (void)setShadowsCollection:(nullable MDCShadowsCollection *)shadowsCollection {
   _shadowsCollection = shadowsCollection;
 
   [self updateShadow];
@@ -869,9 +950,9 @@ static BOOL gEnablePerformantShadow = NO;
 #pragma mark - UILargeContentViewerInteractionDelegate
 
 #if MDC_AVAILABLE_SDK_IOS(13_0)
-- (id<UILargeContentViewerItem>)largeContentViewerInteraction:
-                                    (UILargeContentViewerInteraction *)interaction
-                                                  itemAtPoint:(CGPoint)point
+- (nullable id<UILargeContentViewerItem>)largeContentViewerInteraction:
+                                             (UILargeContentViewerInteraction *)interaction
+                                                           itemAtPoint:(CGPoint)point
     NS_AVAILABLE_IOS(13_0) {
   MDCBottomNavigationItemView *lastItemView =
       (MDCBottomNavigationItemView *)self.lastLargeContentViewerItem;
@@ -907,7 +988,7 @@ static BOOL gEnablePerformantShadow = NO;
 }
 
 - (void)largeContentViewerInteraction:(UILargeContentViewerInteraction *)interaction
-                         didEndOnItem:(id<UILargeContentViewerItem>)item
+                         didEndOnItem:(nullable id<UILargeContentViewerItem>)item
                               atPoint:(CGPoint)point NS_AVAILABLE_IOS(13_0) {
   if (self.lastLargeContentViewerItem) {
     MDCBottomNavigationItemView *lastItemView =
@@ -923,8 +1004,9 @@ static BOOL gEnablePerformantShadow = NO;
 
 #ifdef __IPHONE_13_4
 #pragma mark - UIPointerInteractionDelegate
-- (UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction
-                        styleForRegion:(UIPointerRegion *)region API_AVAILABLE(ios(13.4)) {
+
+- (nullable UIPointerStyle *)pointerInteraction:(UIPointerInteraction *)interaction
+                                 styleForRegion:(UIPointerRegion *)region API_AVAILABLE(ios(13.4)) {
   MDCBottomNavigationItemView *bottomNavigationView = interaction.view;
   if (![bottomNavigationView isKindOfClass:[MDCBottomNavigationItemView class]]) {
     return nil;
@@ -951,7 +1033,7 @@ static BOOL gEnablePerformantShadow = NO;
 
 #pragma mark - Configuring the ripple appearance
 
-- (void)setRippleColor:(UIColor *)rippleColor {
+- (void)setRippleColor:(nullable UIColor *)rippleColor {
   _rippleColor = rippleColor;
 
   for (NSUInteger i = 0; i < self.items.count; ++i) {
@@ -981,7 +1063,7 @@ static BOOL gEnablePerformantShadow = NO;
 }
 
 // TODO(featherless): Delete once everyone has migrated to itemBadgeAppearance.
-- (void)setItemBadgeBackgroundColor:(UIColor *)itemBadgeBackgroundColor {
+- (void)setItemBadgeBackgroundColor:(nullable UIColor *)itemBadgeBackgroundColor {
   _itemBadgeBackgroundColor = itemBadgeBackgroundColor;
 
   for (NSUInteger i = 0; i < self.items.count; ++i) {
@@ -995,7 +1077,7 @@ static BOOL gEnablePerformantShadow = NO;
 }
 
 // TODO(featherless): Delete once everyone has migrated to itemBadgeAppearance.
-- (void)setItemBadgeTextColor:(UIColor *)itemBadgeTextColor {
+- (void)setItemBadgeTextColor:(nullable UIColor *)itemBadgeTextColor {
   _itemBadgeTextColor = itemBadgeTextColor;
 
   for (MDCBottomNavigationItemView *itemView in self.itemViews) {
@@ -1004,7 +1086,7 @@ static BOOL gEnablePerformantShadow = NO;
 }
 
 // TODO(featherless): Delete once everyone has migrated to itemBadgeAppearance.
-- (void)setItemBadgeTextFont:(UIFont *)itemBadgeTextFont {
+- (void)setItemBadgeTextFont:(nullable UIFont *)itemBadgeTextFont {
   _itemBadgeTextFont = itemBadgeTextFont;
 
   for (MDCBottomNavigationItemView *itemView in self.itemViews) {
@@ -1036,4 +1118,7 @@ static BOOL gEnablePerformantShadow = NO;
     itemView.titleBelowIcon = self.isTitleBelowIcon;
   }
 }
+
 @end
+
+NS_ASSUME_NONNULL_END
