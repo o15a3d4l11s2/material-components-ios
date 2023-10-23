@@ -230,7 +230,8 @@ Pod::Spec.new do |mdc|
 
     component.test_spec 'UnitTests' do |unit_tests|
       unit_tests.source_files = [
-        "components/#{component.base_name}/tests/unit/*.{h,m,swift}"
+        "components/#{component.base_name}/tests/unit/*.{h,m,swift}",
+        "components/M3CButton/src/*.{h,m}"
       ]
       unit_tests.dependency "MaterialComponents/schemes/Container"
       unit_tests.dependency "MaterialComponents/private/Color"
@@ -686,7 +687,8 @@ Pod::Spec.new do |mdc|
     component.test_spec 'UnitTests' do |unit_tests|
       unit_tests.source_files = [
         "components/#{component.base_name}/tests/unit/*.{h,m,swift}",
-        "components/#{component.base_name}/tests/unit/supplemental/*.{h,m,swift}"
+        "components/#{component.base_name}/tests/unit/supplemental/*.{h,m,swift}",
+        "components/M3CButton/src/*.{h,m}"
       ]
       unit_tests.resources = "components/#{component.base_name}/tests/unit/resources/*"
     end
